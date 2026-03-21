@@ -1,14 +1,23 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import { signIn } from "next-auth/react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import {
+  callback_path_to_absolute_url,
+  callback_url_to_path,
+  extract_safe_callback_path,
+} from "@/lib/callback-url";
 
 export function LoginForm() {
   const router = useRouter();
   const search_params = useSearchParams();
-  const callback_url = search_params.get("callbackUrl") ?? "/dashboard";
+  const callback_path = useMemo(
+    () => extract_safe_callback_path(search_params.get("callbackUrl")),
+    [search_params],
+  );
+  const callback_url = callback_path_to_absolute_url(callback_path);
 
   const [email, set_email] = useState("");
   const [password, set_password] = useState("");
@@ -33,7 +42,7 @@ export function LoginForm() {
       return;
     }
 
-    router.push(result?.url ?? callback_url);
+    router.push(callback_url_to_path(result?.url ?? callback_url));
     router.refresh();
   }
 

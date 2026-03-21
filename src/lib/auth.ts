@@ -16,6 +16,14 @@ function normalize_email(value: string): string {
   return value.trim().toLowerCase();
 }
 
+function is_local_or_ngrok_host(hostname: string): boolean {
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname.endsWith(".ngrok-free.app")
+  );
+}
+
 const providers: NextAuthOptions["providers"] = [
   CredentialsProvider({
     name: "Email and Password",
@@ -101,6 +109,28 @@ export const auth_options: NextAuthOptions = {
       });
 
       return Boolean(invite?.is_active);
+    },
+    async redirect({ url, baseUrl }) {
+      if (url.startsWith("/")) {
+        return `${baseUrl}${url}`;
+      }
+
+      try {
+        const target_url = new URL(url);
+        const base_url = new URL(baseUrl);
+
+        if (target_url.origin === base_url.origin) {
+          return target_url.toString();
+        }
+
+        if (is_local_or_ngrok_host(target_url.hostname)) {
+          return target_url.toString();
+        }
+      } catch {
+        return `${baseUrl}/dashboard`;
+      }
+
+      return `${baseUrl}/dashboard`;
     },
     async session({ session, user }) {
       if (session.user) {

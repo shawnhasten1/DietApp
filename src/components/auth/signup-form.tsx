@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 import { signIn } from "next-auth/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { callback_path_to_absolute_url, callback_url_to_path } from "@/lib/callback-url";
 
 type SignupPayload = {
   email: string;
@@ -13,6 +14,7 @@ type SignupPayload = {
 
 export function SignupForm() {
   const router = useRouter();
+  const dashboard_callback_url = callback_path_to_absolute_url("/dashboard");
 
   const [display_name, set_display_name] = useState("");
   const [email, set_email] = useState("");
@@ -50,7 +52,7 @@ export function SignupForm() {
     const sign_in_result = await signIn("credentials", {
       email,
       password,
-      callbackUrl: "/dashboard",
+      callbackUrl: dashboard_callback_url,
       redirect: false,
     });
 
@@ -61,7 +63,7 @@ export function SignupForm() {
       return;
     }
 
-    router.push(sign_in_result?.url ?? "/dashboard");
+    router.push(callback_url_to_path(sign_in_result?.url ?? dashboard_callback_url));
     router.refresh();
   }
 
