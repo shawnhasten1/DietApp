@@ -4,6 +4,7 @@ export type NormalizedFoodItem = {
   upc: string | null;
   serving_size: number | null;
   serving_unit: string | null;
+  serving_size_label: string | null;
   calories: number;
   protein_g: number;
   carbs_g: number;

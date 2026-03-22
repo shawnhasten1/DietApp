@@ -122,6 +122,8 @@ function normalize_edamam_food(
       upc,
       serving_size,
       serving_unit,
+      serving_size_label:
+        serving_size !== null ? `1 ${serving_unit} (${Math.round(serving_size)} g)` : null,
       calories: Math.round(normalized.calories),
       protein_g: round_to_tenth(normalized.protein_g),
       carbs_g: round_to_tenth(normalized.carbs_g),

@@ -46,6 +46,15 @@ function parse_serving_size(raw_value: string | null): { size: number | null; un
     return { size: null, unit: null };
   }
 
+  const parenthesized_match = raw_value.match(/\(([\d.]+)\s*([a-zA-Z]+)\)/);
+
+  if (parenthesized_match) {
+    return {
+      size: Number(parenthesized_match[1]),
+      unit: parenthesized_match[2] ?? null,
+    };
+  }
+
   const match = raw_value.match(/([\d.]+)\s*([a-zA-Z]+)?/);
 
   if (!match) {
@@ -76,8 +85,10 @@ function pick_number(
 function normalize_product(product: Record<string, unknown>): NormalizedFoodItem {
   const nutriments = (product.nutriments as Record<string, unknown> | undefined) ?? {};
 
-  const serving_size = get_string(product.serving_size);
-  const parsed_serving = parse_serving_size(serving_size);
+  const serving_size_label = get_string(product.serving_size);
+  const parsed_serving = parse_serving_size(serving_size_label);
+  const serving_quantity = get_number(product.serving_quantity);
+  const serving_quantity_unit = get_string(product.serving_quantity_unit);
 
   const sodium_g = pick_number(nutriments, ["sodium_serving", "sodium_100g"]);
 
@@ -88,8 +99,9 @@ function normalize_product(product: Record<string, unknown>): NormalizedFoodItem
       "Unknown Food Item",
     brand: get_string(product.brands),
     upc: get_string(product.code),
-    serving_size: parsed_serving.size,
-    serving_unit: parsed_serving.unit,
+    serving_size: serving_quantity ?? parsed_serving.size,
+    serving_unit: serving_quantity_unit ?? parsed_serving.unit,
+    serving_size_label,
     calories: Math.round(
       pick_number(nutriments, ["energy-kcal_serving", "energy-kcal_100g", "energy-kcal"], 0) ?? 0,
     ),
@@ -142,6 +154,8 @@ export class OpenFoodFactsProvider implements NutritionProvider {
         "product_name_en",
         "brands",
         "serving_size",
+        "serving_quantity",
+        "serving_quantity_unit",
         "nutriments",
       ].join(","),
     });
@@ -187,6 +201,11 @@ export class OpenFoodFactsProvider implements NutritionProvider {
       raw_payload: payload,
       debug_summary: {
         status: payload.status ?? null,
+        serving_size: payload.product ? get_string(payload.product.serving_size) : null,
+        serving_quantity: payload.product ? get_number(payload.product.serving_quantity) : null,
+        serving_quantity_unit: payload.product
+          ? get_string(payload.product.serving_quantity_unit)
+          : null,
       },
     };
   }

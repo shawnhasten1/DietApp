@@ -29,6 +29,7 @@ model User {
   weight_entries WeightEntry[]
   food_logs      FoodLog[]
   exercise_logs  ExerciseLog[]
+  recipes        Recipe[]
 
   @@map("users")
 }
@@ -135,6 +136,7 @@ model FoodItem {
   created_at   DateTime  @default(now())
   updated_at   DateTime  @updatedAt
   food_logs    FoodLog[]
+  recipe_ingredients RecipeIngredient[]
 
   @@index([upc])
   @@index([name])
@@ -170,4 +172,33 @@ model ExerciseLog {
 
   @@index([user_id, performed_at])
   @@map("exercise_logs")
+}
+
+model Recipe {
+  id          String   @id @default(cuid())
+  user_id     String
+  name        String   @db.VarChar(160)
+  servings    Decimal  @default(1) @db.Decimal(6, 2)
+  notes       String?  @db.Text
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+  user        User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  ingredients RecipeIngredient[]
+
+  @@index([user_id, created_at])
+  @@map("recipes")
+}
+
+model RecipeIngredient {
+  id          String   @id @default(cuid())
+  recipe_id   String
+  food_item_id String
+  quantity    Decimal  @default(1) @db.Decimal(7, 2)
+  created_at  DateTime @default(now())
+  recipe      Recipe   @relation(fields: [recipe_id], references: [id], onDelete: Cascade)
+  food_item   FoodItem @relation(fields: [food_item_id], references: [id], onDelete: Restrict)
+
+  @@index([recipe_id, created_at])
+  @@index([food_item_id])
+  @@map("recipe_ingredients")
 }

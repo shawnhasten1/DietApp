@@ -9,6 +9,7 @@ type ProviderFoodItem = {
   upc: string | null;
   serving_size: number | null;
   serving_unit: string | null;
+  serving_size_label: string | null;
   calories: number;
   protein_g: number;
   carbs_g: number;
@@ -39,6 +40,17 @@ type EditableFoodFields = {
   sodium_mg: string;
   source: string;
   source_ref: string;
+};
+
+type AutoScaleBase = {
+  serving_size: number;
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  fiber_g: number | null;
+  sugar_g: number | null;
+  sodium_mg: number | null;
 };
 
 function now_local_datetime_value(): string {
@@ -86,6 +98,44 @@ function to_editable_fields(item?: ProviderFoodItem): EditableFoodFields {
   };
 }
 
+function round_to_tenth(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+function format_optional_number(value: number | null): string {
+  if (value === null) {
+    return "";
+  }
+
+  return String(value);
+}
+
+function to_scaled_fields(base: AutoScaleBase, next_serving_size_raw: string): Partial<EditableFoodFields> {
+  const next_serving_size = Number(next_serving_size_raw);
+
+  if (!Number.isFinite(next_serving_size) || next_serving_size <= 0) {
+    return {};
+  }
+
+  const factor = next_serving_size / base.serving_size;
+
+  return {
+    calories: String(Math.max(0, Math.round(base.calories * factor))),
+    protein_g: String(round_to_tenth(base.protein_g * factor)),
+    carbs_g: String(round_to_tenth(base.carbs_g * factor)),
+    fat_g: String(round_to_tenth(base.fat_g * factor)),
+    fiber_g: format_optional_number(
+      base.fiber_g !== null ? round_to_tenth(base.fiber_g * factor) : null,
+    ),
+    sugar_g: format_optional_number(
+      base.sugar_g !== null ? round_to_tenth(base.sugar_g * factor) : null,
+    ),
+    sodium_mg: format_optional_number(
+      base.sodium_mg !== null ? round_to_tenth(base.sodium_mg * factor) : null,
+    ),
+  };
+}
+
 export function FoodLogForm({ action }: FoodLogFormProps) {
   const [search_query, set_search_query] = useState("");
   const [upc_query, set_upc_query] = useState("");
@@ -93,6 +143,8 @@ export function FoodLogForm({ action }: FoodLogFormProps) {
   const [provider_error, set_provider_error] = useState<string | null>(null);
   const [is_searching, set_is_searching] = useState(false);
   const [fields, set_fields] = useState<EditableFoodFields>(() => to_editable_fields());
+  const [provider_serving_label, set_provider_serving_label] = useState<string | null>(null);
+  const [auto_scale_base, set_auto_scale_base] = useState<AutoScaleBase | null>(null);
   const [meal_type, set_meal_type] = useState("meal");
   const [servings, set_servings] = useState("1");
   const [consumed_at, set_consumed_at] = useState("");
@@ -112,6 +164,38 @@ export function FoodLogForm({ action }: FoodLogFormProps) {
 
   function choose_provider_item(item: ProviderFoodItem) {
     set_fields(to_editable_fields(item));
+    set_provider_serving_label(item.serving_size_label ?? null);
+
+    if (item.serving_size !== null && item.serving_size > 0) {
+      set_auto_scale_base({
+        serving_size: item.serving_size,
+        calories: item.calories,
+        protein_g: item.protein_g,
+        carbs_g: item.carbs_g,
+        fat_g: item.fat_g,
+        fiber_g: item.fiber_g,
+        sugar_g: item.sugar_g,
+        sodium_mg: item.sodium_mg,
+      });
+      return;
+    }
+
+    set_auto_scale_base(null);
+  }
+
+  function on_manual_nutrient_change(
+    field:
+      | "calories"
+      | "protein_g"
+      | "carbs_g"
+      | "fat_g"
+      | "fiber_g"
+      | "sugar_g"
+      | "sodium_mg",
+    value: string,
+  ) {
+    set_auto_scale_base(null);
+    patch_fields({ [field]: value });
   }
 
   async function lookup_by_upc(override_upc?: string) {
@@ -333,7 +417,25 @@ export function FoodLogForm({ action }: FoodLogFormProps) {
                 type="number"
                 step="0.01"
                 value={fields.serving_size}
-                onChange={(event) => patch_fields({ serving_size: event.target.value })}
+                onChange={(event) => {
+                  const next_serving_size = event.target.value;
+
+                  set_fields((current) => {
+                    const next_fields: EditableFoodFields = {
+                      ...current,
+                      serving_size: next_serving_size,
+                    };
+
+                    if (!auto_scale_base) {
+                      return next_fields;
+                    }
+
+                    return {
+                      ...next_fields,
+                      ...to_scaled_fields(auto_scale_base, next_serving_size),
+                    };
+                  });
+                }}
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-base"
               />
             </div>
@@ -350,6 +452,11 @@ export function FoodLogForm({ action }: FoodLogFormProps) {
               />
             </div>
           </div>
+          {provider_serving_label ? (
+            <p className="text-xs text-slate-600">
+              Provider serving: {provider_serving_label}
+            </p>
+          ) : null}
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
@@ -363,7 +470,7 @@ export function FoodLogForm({ action }: FoodLogFormProps) {
                 min={0}
                 required
                 value={fields.calories}
-                onChange={(event) => patch_fields({ calories: event.target.value })}
+                onChange={(event) => on_manual_nutrient_change("calories", event.target.value)}
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-base"
               />
             </div>
@@ -379,7 +486,7 @@ export function FoodLogForm({ action }: FoodLogFormProps) {
                 min={0}
                 required
                 value={fields.protein_g}
-                onChange={(event) => patch_fields({ protein_g: event.target.value })}
+                onChange={(event) => on_manual_nutrient_change("protein_g", event.target.value)}
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-base"
               />
             </div>
@@ -398,7 +505,7 @@ export function FoodLogForm({ action }: FoodLogFormProps) {
                 min={0}
                 required
                 value={fields.carbs_g}
-                onChange={(event) => patch_fields({ carbs_g: event.target.value })}
+                onChange={(event) => on_manual_nutrient_change("carbs_g", event.target.value)}
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-base"
               />
             </div>
@@ -414,7 +521,7 @@ export function FoodLogForm({ action }: FoodLogFormProps) {
                 min={0}
                 required
                 value={fields.fat_g}
-                onChange={(event) => patch_fields({ fat_g: event.target.value })}
+                onChange={(event) => on_manual_nutrient_change("fat_g", event.target.value)}
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-base"
               />
             </div>
@@ -432,7 +539,7 @@ export function FoodLogForm({ action }: FoodLogFormProps) {
                 step="0.1"
                 min={0}
                 value={fields.fiber_g}
-                onChange={(event) => patch_fields({ fiber_g: event.target.value })}
+                onChange={(event) => on_manual_nutrient_change("fiber_g", event.target.value)}
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-base"
               />
             </div>
@@ -447,7 +554,7 @@ export function FoodLogForm({ action }: FoodLogFormProps) {
                 step="0.1"
                 min={0}
                 value={fields.sugar_g}
-                onChange={(event) => patch_fields({ sugar_g: event.target.value })}
+                onChange={(event) => on_manual_nutrient_change("sugar_g", event.target.value)}
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-base"
               />
             </div>
@@ -462,7 +569,7 @@ export function FoodLogForm({ action }: FoodLogFormProps) {
                 step="0.1"
                 min={0}
                 value={fields.sodium_mg}
-                onChange={(event) => patch_fields({ sodium_mg: event.target.value })}
+                onChange={(event) => on_manual_nutrient_change("sodium_mg", event.target.value)}
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-base"
               />
             </div>

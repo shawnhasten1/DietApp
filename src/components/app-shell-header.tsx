@@ -14,6 +14,7 @@ type AppShellHeaderProps = {
 const nav_links = [
   { href: "/dashboard", label: "Home" },
   { href: "/food", label: "Food" },
+  { href: "/recipes", label: "Recipes" },
   { href: "/exercise", label: "Exercise" },
   { href: "/weight", label: "Weight" },
   { href: "/profile", label: "Profile" },
