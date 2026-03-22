@@ -6,6 +6,8 @@ import { z } from "zod";
 import { require_authenticated_user } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
 
+type FoodItemLookupInput = z.infer<typeof create_food_log_schema>;
+
 function required_string(value: FormDataEntryValue | null): string {
   if (typeof value !== "string") {
     return "";
@@ -66,6 +68,46 @@ const update_food_log_schema = z.object({
   notes: z.string().max(1000).nullable(),
 });
 
+function build_food_item_match_conditions(data: FoodItemLookupInput) {
+  const shared_fields = {
+    name: data.name,
+    brand: data.brand,
+    upc: data.upc,
+    serving_size: data.serving_size,
+    serving_unit: data.serving_unit,
+    calories: data.calories,
+    protein_g: data.protein_g,
+    carbs_g: data.carbs_g,
+    fat_g: data.fat_g,
+    fiber_g: data.fiber_g,
+    sugar_g: data.sugar_g,
+    sodium_mg: data.sodium_mg,
+    source: data.source,
+  };
+
+  const conditions: Array<Record<string, unknown>> = [];
+
+  if (data.source_ref) {
+    conditions.push({
+      ...shared_fields,
+      source_ref: data.source_ref,
+    });
+  }
+
+  if (data.upc) {
+    conditions.push({
+      ...shared_fields,
+    });
+  }
+
+  conditions.push({
+    ...shared_fields,
+    source_ref: data.source_ref,
+  });
+
+  return conditions;
+}
+
 export async function create_food_log_action(form_data: FormData) {
   const user = await require_authenticated_user();
 
@@ -94,22 +136,7 @@ export async function create_food_log_action(form_data: FormData) {
     throw new Error("Invalid food log input.");
   }
 
-  const find_conditions = [];
-
-  if (parsed.data.source_ref) {
-    find_conditions.push({
-      source: parsed.data.source,
-      source_ref: parsed.data.source_ref,
-    });
-  }
-
-  if (parsed.data.upc) {
-    find_conditions.push({
-      upc: parsed.data.upc,
-      name: parsed.data.name,
-      calories: parsed.data.calories,
-    });
-  }
+  const find_conditions = build_food_item_match_conditions(parsed.data);
 
   const existing_food_item =
     find_conditions.length > 0

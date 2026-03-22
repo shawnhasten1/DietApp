@@ -1,4 +1,8 @@
-import type { NormalizedFoodItem, NutritionProvider } from "@/server/nutrition/types";
+import type {
+  NormalizedFoodItem,
+  NutritionProvider,
+  UpcDebugResponse,
+} from "@/server/nutrition/types";
 
 const OFF_PRODUCT_BASE_URL = "https://world.openfoodfacts.org/api/v2/product";
 const OFF_SEARCH_URL = "https://world.openfoodfacts.org/cgi/search.pl";
@@ -23,6 +27,18 @@ function get_number(value: unknown): number | null {
   }
 
   return null;
+}
+
+function round_to_tenth(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+function round_optional_to_tenth(value: number | null): number | null {
+  if (value === null) {
+    return null;
+  }
+
+  return round_to_tenth(value);
 }
 
 function parse_serving_size(raw_value: string | null): { size: number | null; unit: string | null } {
@@ -77,12 +93,14 @@ function normalize_product(product: Record<string, unknown>): NormalizedFoodItem
     calories: Math.round(
       pick_number(nutriments, ["energy-kcal_serving", "energy-kcal_100g", "energy-kcal"], 0) ?? 0,
     ),
-    protein_g: pick_number(nutriments, ["proteins_serving", "proteins_100g"], 0) ?? 0,
-    carbs_g: pick_number(nutriments, ["carbohydrates_serving", "carbohydrates_100g"], 0) ?? 0,
-    fat_g: pick_number(nutriments, ["fat_serving", "fat_100g"], 0) ?? 0,
-    fiber_g: pick_number(nutriments, ["fiber_serving", "fiber_100g"]),
-    sugar_g: pick_number(nutriments, ["sugars_serving", "sugars_100g"]),
-    sodium_mg: sodium_g !== null ? sodium_g * 1000 : null,
+    protein_g: round_to_tenth(pick_number(nutriments, ["proteins_serving", "proteins_100g"], 0) ?? 0),
+    carbs_g: round_to_tenth(
+      pick_number(nutriments, ["carbohydrates_serving", "carbohydrates_100g"], 0) ?? 0,
+    ),
+    fat_g: round_to_tenth(pick_number(nutriments, ["fat_serving", "fat_100g"], 0) ?? 0),
+    fiber_g: round_optional_to_tenth(pick_number(nutriments, ["fiber_serving", "fiber_100g"])),
+    sugar_g: round_optional_to_tenth(pick_number(nutriments, ["sugars_serving", "sugars_100g"])),
+    sodium_mg: round_optional_to_tenth(sodium_g !== null ? sodium_g * 1000 : null),
     source: "open_food_facts",
     source_ref: get_string(product._id) ?? get_string(product.code),
   };
@@ -145,5 +163,31 @@ export class OpenFoodFactsProvider implements NutritionProvider {
     }
 
     return payload.products.map(normalize_product);
+  }
+
+  async lookup_by_upc_debug(upc: string): Promise<UpcDebugResponse | null> {
+    const response = await fetch(`${OFF_PRODUCT_BASE_URL}/${encodeURIComponent(upc)}.json`, {
+      next: { revalidate: 0 },
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const payload = (await response.json()) as {
+      status?: number;
+      product?: Record<string, unknown>;
+    };
+
+    return {
+      provider: "open_food_facts",
+      upc,
+      normalized_item:
+        payload.status === 1 && payload.product ? normalize_product(payload.product) : null,
+      raw_payload: payload,
+      debug_summary: {
+        status: payload.status ?? null,
+      },
+    };
   }
 }

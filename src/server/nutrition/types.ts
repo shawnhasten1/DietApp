@@ -15,7 +15,16 @@ export type NormalizedFoodItem = {
   source_ref: string | null;
 };
 
+export type UpcDebugResponse = {
+  provider: string;
+  upc: string;
+  normalized_item: NormalizedFoodItem | null;
+  raw_payload: unknown;
+  debug_summary?: Record<string, unknown>;
+};
+
 export interface NutritionProvider {
   lookup_by_upc(upc: string): Promise<NormalizedFoodItem | null>;
+  lookup_by_upc_debug?(upc: string): Promise<UpcDebugResponse | null>;
   search_foods(query: string, limit?: number): Promise<NormalizedFoodItem[]>;
 }

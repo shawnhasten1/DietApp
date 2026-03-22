@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { BarcodeScanner } from "@/components/food/barcode-scanner";
 
 type ProviderFoodItem = {
   name: string;
@@ -94,10 +95,16 @@ export function FoodLogForm({ action }: FoodLogFormProps) {
   const [fields, set_fields] = useState<EditableFoodFields>(() => to_editable_fields());
   const [meal_type, set_meal_type] = useState("meal");
   const [servings, set_servings] = useState("1");
-  const [consumed_at, set_consumed_at] = useState(() => now_local_datetime_value());
+  const [consumed_at, set_consumed_at] = useState("");
   const [notes, set_notes] = useState("");
 
   const has_results = useMemo(() => search_results.length > 0, [search_results.length]);
+  const normalized_upc_query = useMemo(() => upc_query.replace(/\D/g, ""), [upc_query]);
+  const has_debug_upc = useMemo(() => /^\d{8,14}$/.test(normalized_upc_query), [normalized_upc_query]);
+
+  useEffect(() => {
+    set_consumed_at(now_local_datetime_value());
+  }, []);
 
   function patch_fields(patch: Partial<EditableFoodFields>) {
     set_fields((current) => ({ ...current, ...patch }));
@@ -107,8 +114,8 @@ export function FoodLogForm({ action }: FoodLogFormProps) {
     set_fields(to_editable_fields(item));
   }
 
-  async function lookup_by_upc() {
-    const upc = upc_query.trim();
+  async function lookup_by_upc(override_upc?: string) {
+    const upc = (override_upc ?? upc_query).trim();
 
     if (upc.length < 8) {
       set_provider_error("UPC must be at least 8 digits.");
@@ -142,6 +149,11 @@ export function FoodLogForm({ action }: FoodLogFormProps) {
     } finally {
       set_is_searching(false);
     }
+  }
+
+  function on_barcode_detected(upc_code: string) {
+    set_upc_query(upc_code);
+    void lookup_by_upc(upc_code);
   }
 
   async function search_by_name() {
@@ -211,12 +223,27 @@ export function FoodLogForm({ action }: FoodLogFormProps) {
             <button
               type="button"
               disabled={is_searching}
-              onClick={lookup_by_upc}
+              onClick={() => {
+                void lookup_by_upc();
+              }}
               className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-60"
             >
               Lookup
             </button>
           </div>
+        </div>
+        {has_debug_upc ? (
+          <a
+            href={`/api/nutrition/upc/${encodeURIComponent(normalized_upc_query)}/debug`}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-2 inline-block text-xs font-semibold text-slate-700 underline"
+          >
+            View Raw UPC API Debug Data
+          </a>
+        ) : null}
+        <div className="mt-3">
+          <BarcodeScanner on_detect={on_barcode_detected} disabled={is_searching} />
         </div>
         {provider_error ? <p className="mt-2 text-xs text-rose-700">{provider_error}</p> : null}
       </div>
