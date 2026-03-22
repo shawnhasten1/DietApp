@@ -1,20 +1,12 @@
 import { prisma } from "@/lib/prisma";
-
-function start_of_day(date: Date): Date {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
-}
-
-function end_of_day(date: Date): Date {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1, 0, 0, 0, 0);
-}
+import { day_bounds_for_date_in_app_time_zone } from "@/lib/app-time";
 
 function round_to_tenths(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
 export async function get_daily_summary(user_id: string, date = new Date()) {
-  const day_start = start_of_day(date);
-  const day_end = end_of_day(date);
+  const { day_start, day_end } = day_bounds_for_date_in_app_time_zone(date);
 
   const [food_logs, exercise_totals] = await Promise.all([
     prisma.foodLog.findMany({

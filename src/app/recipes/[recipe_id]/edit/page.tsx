@@ -2,12 +2,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppShellHeader } from "@/components/app-shell-header";
 import { RecipeBuilderForm } from "@/components/recipes/recipe-builder-form";
+import { format_date_in_app_time_zone } from "@/lib/app-time";
 import { require_authenticated_user } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
 import { update_recipe_action } from "@/app/recipes/actions";
 
 function menu_date_label(): string {
-  return new Date().toLocaleDateString("en-US", {
+  return format_date_in_app_time_zone(new Date(), {
     weekday: "short",
     month: "short",
     day: "numeric",

@@ -1,47 +1,19 @@
 import Link from "next/link";
 import { AppShellHeader } from "@/components/app-shell-header";
 import { require_authenticated_user } from "@/lib/authz";
+import {
+  add_days_to_day_key,
+  day_bounds_for_key_in_app_time_zone,
+  format_date_in_app_time_zone,
+  format_time_in_app_time_zone,
+  normalize_day_key_in_app_time_zone,
+} from "@/lib/app-time";
 import { meal_type_labels, meal_type_values, normalize_meal_type, type MealTypeValue } from "@/lib/meal-types";
 import { prisma } from "@/lib/prisma";
 import { get_daily_summary } from "@/server/summary/get-daily-summary";
 
-function start_of_day(date: Date): Date {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
-}
-
-function end_of_day(date: Date): Date {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1, 0, 0, 0, 0);
-}
-
-function format_date_key(date: Date): string {
-  const yyyy = String(date.getFullYear());
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const dd = String(date.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-function parse_requested_date(value: string | undefined): Date {
-  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return start_of_day(new Date());
-  }
-
-  const parsed = new Date(`${value}T00:00:00`);
-
-  if (Number.isNaN(parsed.getTime())) {
-    return start_of_day(new Date());
-  }
-
-  return start_of_day(parsed);
-}
-
-function add_days(date: Date, days: number): Date {
-  const next = new Date(date);
-  next.setDate(next.getDate() + days);
-  return next;
-}
-
 function format_menu_date(date: Date): string {
-  return date.toLocaleDateString("en-US", {
+  return format_date_in_app_time_zone(date, {
     weekday: "short",
     month: "short",
     day: "numeric",
@@ -50,7 +22,7 @@ function format_menu_date(date: Date): string {
 }
 
 function format_time(date: Date): string {
-  return date.toLocaleTimeString("en-US", {
+  return format_time_in_app_time_zone(date, {
     hour: "numeric",
     minute: "2-digit",
   });
@@ -64,9 +36,15 @@ export default async function DailyPage({
   const user = await require_authenticated_user();
   const { date } = await searchParams;
 
-  const selected_day = parse_requested_date(date);
-  const day_start = start_of_day(selected_day);
-  const day_end = end_of_day(selected_day);
+  const selected_day_key = normalize_day_key_in_app_time_zone(date);
+  const bounds = day_bounds_for_key_in_app_time_zone(selected_day_key);
+
+  if (!bounds) {
+    throw new Error("Invalid day key.");
+  }
+
+  const { day_start, day_end } = bounds;
+  const selected_day = day_start;
 
   const [summary, food_logs, exercise_logs, weight_entries] = await Promise.all([
     get_daily_summary(user.id, selected_day),
@@ -123,9 +101,8 @@ export default async function DailyPage({
     grouped_food_logs[meal_type].push(log);
   }
 
-  const previous_day_key = format_date_key(add_days(selected_day, -1));
-  const next_day_key = format_date_key(add_days(selected_day, 1));
-  const selected_day_key = format_date_key(selected_day);
+  const previous_day_key = add_days_to_day_key(selected_day_key, -1);
+  const next_day_key = add_days_to_day_key(selected_day_key, 1);
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-md flex-col gap-4 px-4 py-6">

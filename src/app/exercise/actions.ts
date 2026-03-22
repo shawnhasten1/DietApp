@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { require_authenticated_user } from "@/lib/authz";
+import { parse_datetime_local_in_app_time_zone } from "@/lib/app-time";
 import { prisma } from "@/lib/prisma";
 
 function required_string(value: FormDataEntryValue | null): string {
@@ -32,8 +33,8 @@ function parse_datetime_or_now(value: FormDataEntryValue | null): Date {
     return new Date();
   }
 
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+  const parsed = parse_datetime_local_in_app_time_zone(value);
+  return parsed ?? new Date();
 }
 
 const create_schema = z.object({

@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { AppShellHeader } from "@/components/app-shell-header";
 import { RecipeBuilderForm } from "@/components/recipes/recipe-builder-form";
+import {
+  format_date_in_app_time_zone,
+  format_datetime_local_in_app_time_zone,
+} from "@/lib/app-time";
 import { require_authenticated_user } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
 import {
@@ -10,20 +14,15 @@ import {
 } from "@/app/recipes/actions";
 
 function menu_date_label(): string {
-  return new Date().toLocaleDateString("en-US", {
+  return format_date_in_app_time_zone(new Date(), {
     weekday: "short",
     month: "short",
     day: "numeric",
   });
 }
 
-function datetime_local_value(date: Date): string {
-  const timezone_offset_ms = new Date().getTimezoneOffset() * 60_000;
-  return new Date(date.getTime() - timezone_offset_ms).toISOString().slice(0, 16);
-}
-
 function now_datetime_local_value(): string {
-  return datetime_local_value(new Date());
+  return format_datetime_local_in_app_time_zone(new Date());
 }
 
 function summarize_recipe(

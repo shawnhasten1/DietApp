@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { FoodSource, Prisma } from "@prisma/client";
 import { z } from "zod";
 import { require_authenticated_user } from "@/lib/authz";
+import { parse_datetime_local_in_app_time_zone } from "@/lib/app-time";
 import { prisma } from "@/lib/prisma";
 
 type RecipeFoodItemInput = {
@@ -50,8 +51,8 @@ function parse_datetime_or_now(value: FormDataEntryValue | null): Date {
     return new Date();
   }
 
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+  const parsed = parse_datetime_local_in_app_time_zone(value);
+  return parsed ?? new Date();
 }
 
 function build_food_item_match_conditions(data: RecipeFoodItemInput) {

@@ -1,5 +1,13 @@
 import Link from "next/link";
 import { AppShellHeader } from "@/components/app-shell-header";
+import {
+  add_days_to_day_key,
+  day_bounds_for_date_in_app_time_zone,
+  day_bounds_for_key_in_app_time_zone,
+  day_key_in_app_time_zone,
+  format_date_in_app_time_zone,
+  format_day_key_in_app_time_zone,
+} from "@/lib/app-time";
 import { prisma } from "@/lib/prisma";
 import { require_authenticated_user } from "@/lib/authz";
 import { get_daily_summary } from "@/server/summary/get-daily-summary";
@@ -18,36 +26,23 @@ type WeightTrendDay = {
   weight_lb: number | null;
 };
 
-function start_of_day(date: Date): Date {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
+function day_label_from_key(day_key: string): string {
+  return format_day_key_in_app_time_zone(day_key, { weekday: "short" });
 }
 
-function day_key(date: Date): string {
-  const yyyy = String(date.getFullYear());
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const dd = String(date.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-function day_label_from_date(date: Date): string {
-  return date.toLocaleDateString("en-US", { weekday: "short" });
-}
-
-function get_last_n_days(n: number, end_date = new Date()): Date[] {
-  const days: Date[] = [];
-  const end_day = start_of_day(end_date);
+function get_last_n_day_keys(n: number, end_date = new Date()): string[] {
+  const day_keys: string[] = [];
+  const end_day_key = day_bounds_for_date_in_app_time_zone(end_date).day_key;
 
   for (let index = n - 1; index >= 0; index -= 1) {
-    const date = new Date(end_day);
-    date.setDate(end_day.getDate() - index);
-    days.push(date);
+    day_keys.push(add_days_to_day_key(end_day_key, -index));
   }
 
-  return days;
+  return day_keys;
 }
 
 function format_date(date_iso: string): string {
-  return new Date(date_iso).toLocaleDateString("en-US", {
+  return format_date_in_app_time_zone(new Date(date_iso), {
     weekday: "short",
     month: "short",
     day: "numeric",
@@ -55,18 +50,18 @@ function format_date(date_iso: string): string {
 }
 
 function build_calorie_trend(
-  trend_days: Date[],
+  trend_day_keys: string[],
   food_logs: Array<{ consumed_at: Date; servings: unknown; food_item: { calories: number } }>,
   exercise_logs: Array<{ performed_at: Date; calories_burned: number }>,
 ): CalorieTrendDay[] {
   const trend_map = new Map<string, { consumed: number; burned: number }>();
 
-  for (const day of trend_days) {
-    trend_map.set(day_key(day), { consumed: 0, burned: 0 });
+  for (const date_key of trend_day_keys) {
+    trend_map.set(date_key, { consumed: 0, burned: 0 });
   }
 
   for (const log of food_logs) {
-    const key = day_key(log.consumed_at);
+    const key = day_key_in_app_time_zone(log.consumed_at);
     const existing = trend_map.get(key);
     if (!existing) {
       continue;
@@ -75,7 +70,7 @@ function build_calorie_trend(
   }
 
   for (const log of exercise_logs) {
-    const key = day_key(log.performed_at);
+    const key = day_key_in_app_time_zone(log.performed_at);
     const existing = trend_map.get(key);
     if (!existing) {
       continue;
@@ -83,12 +78,11 @@ function build_calorie_trend(
     existing.burned += log.calories_burned;
   }
 
-  return trend_days.map((day) => {
-    const key = day_key(day);
-    const values = trend_map.get(key) ?? { consumed: 0, burned: 0 };
+  return trend_day_keys.map((date_key) => {
+    const values = trend_map.get(date_key) ?? { consumed: 0, burned: 0 };
     return {
-      date_key: key,
-      label: day_label_from_date(day),
+      date_key,
+      label: day_label_from_key(date_key),
       consumed: Math.round(values.consumed),
       burned: Math.round(values.burned),
       net: Math.round(values.consumed - values.burned),
@@ -97,13 +91,13 @@ function build_calorie_trend(
 }
 
 function build_weight_trend(
-  trend_days: Date[],
+  trend_day_keys: string[],
   weight_entries: Array<{ recorded_at: Date; weight_lb: unknown }>,
 ): WeightTrendDay[] {
   const latest_by_day = new Map<string, { recorded_at: Date; weight_lb: number }>();
 
   for (const entry of weight_entries) {
-    const key = day_key(entry.recorded_at);
+    const key = day_key_in_app_time_zone(entry.recorded_at);
     const existing = latest_by_day.get(key);
 
     if (!existing || entry.recorded_at > existing.recorded_at) {
@@ -114,13 +108,12 @@ function build_weight_trend(
     }
   }
 
-  return trend_days.map((day) => {
-    const key = day_key(day);
-    const point = latest_by_day.get(key);
+  return trend_day_keys.map((date_key) => {
+    const point = latest_by_day.get(date_key);
 
     return {
-      date_key: key,
-      label: day_label_from_date(day),
+      date_key,
+      label: day_label_from_key(date_key),
       weight_lb: point ? Number(point.weight_lb.toFixed(1)) : null,
     };
   });
@@ -136,8 +129,8 @@ function format_signed_number(value: number): string {
 
 export default async function DashboardPage() {
   const user = await require_authenticated_user();
-  const trend_days = get_last_n_days(7);
-  const trend_start = trend_days[0];
+  const trend_day_keys = get_last_n_day_keys(7);
+  const trend_start = day_bounds_for_key_in_app_time_zone(trend_day_keys[0])?.day_start ?? new Date(0);
 
   const [
     summary,
@@ -216,8 +209,8 @@ export default async function DashboardPage() {
     }),
   ]);
 
-  const calorie_trend = build_calorie_trend(trend_days, trend_food_logs, trend_exercise_logs);
-  const weight_trend = build_weight_trend(trend_days, trend_weight_entries);
+  const calorie_trend = build_calorie_trend(trend_day_keys, trend_food_logs, trend_exercise_logs);
+  const weight_trend = build_weight_trend(trend_day_keys, trend_weight_entries);
 
   const calorie_trend_change = calorie_trend[calorie_trend.length - 1].net - calorie_trend[0].net;
   const known_weights = weight_trend.filter((day) => day.weight_lb !== null);
