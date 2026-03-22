@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { require_api_user_id } from "@/lib/auth-api";
-import { get_nutrition_provider } from "@/server/nutrition/provider";
+import { get_upc_nutrition_provider } from "@/server/nutrition/provider";
 
 const UPC_PATTERN = /^\d{8,14}$/;
 
@@ -20,7 +20,7 @@ export async function GET(
     return NextResponse.json({ error: "UPC must be 8 to 14 digits." }, { status: 400 });
   }
 
-  const provider = get_nutrition_provider();
+  const provider = get_upc_nutrition_provider();
 
   if (provider.lookup_by_upc_debug) {
     const debug_data = await provider.lookup_by_upc_debug(upc);
@@ -37,7 +37,8 @@ export async function GET(
   return NextResponse.json(
     {
       debug: {
-        provider: process.env.NUTRITION_PROVIDER ?? "unknown",
+        provider:
+          process.env.NUTRITION_UPC_PROVIDER ?? process.env.NUTRITION_PROVIDER ?? "unknown",
         upc,
         normalized_item,
         raw_payload: null,

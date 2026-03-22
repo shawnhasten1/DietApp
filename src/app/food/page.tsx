@@ -13,6 +13,14 @@ function datetime_local_value(date: Date): string {
   return new Date(date.getTime() - timezone_offset_ms).toISOString().slice(0, 16);
 }
 
+function menu_date_label(): string {
+  return new Date().toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+}
+
 export default async function FoodPage() {
   const user = await require_authenticated_user();
 
@@ -25,7 +33,12 @@ export default async function FoodPage() {
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-md flex-col gap-4 px-4 py-6">
-      <AppShellHeader title="Food Logs" subtitle="Search by food or UPC, then review and save." />
+      <AppShellHeader
+        title="Food Logs"
+        subtitle="Search by food or UPC, then review and save."
+        menu_email={user.email}
+        menu_date={menu_date_label()}
+      />
 
       <section className="rounded-2xl bg-white p-5 shadow-sm">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">

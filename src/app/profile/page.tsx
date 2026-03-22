@@ -11,6 +11,14 @@ function date_to_input_value(date: Date | null): string {
   return new Date(date).toISOString().slice(0, 10);
 }
 
+function menu_date_label(): string {
+  return new Date().toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+}
+
 export default async function ProfilePage() {
   const user = await require_authenticated_user();
 
@@ -28,7 +36,12 @@ export default async function ProfilePage() {
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-md flex-col gap-4 px-4 py-6">
-      <AppShellHeader title="Profile" subtitle={user.email ?? undefined} />
+      <AppShellHeader
+        title="Profile"
+        subtitle="Goals and defaults"
+        menu_email={user.email}
+        menu_date={menu_date_label()}
+      />
 
       <section className="rounded-2xl bg-white p-5 shadow-sm">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">

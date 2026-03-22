@@ -230,7 +230,9 @@ export default async function DashboardPage() {
     <main className="mx-auto flex min-h-screen w-full max-w-md flex-col gap-4 px-4 py-6">
       <AppShellHeader
         title="Dashboard"
-        subtitle={`${user.email ?? "Signed in"} | ${format_date(summary.date)}`}
+        subtitle="Daily summary"
+        menu_email={user.email}
+        menu_date={format_date(summary.date)}
       />
 
       <section className="grid grid-cols-2 gap-3">

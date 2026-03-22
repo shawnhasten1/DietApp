@@ -16,6 +16,14 @@ function now_datetime_local_value(): string {
   return datetime_local_value(new Date());
 }
 
+function menu_date_label(): string {
+  return new Date().toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+}
+
 export default async function WeightPage() {
   const user = await require_authenticated_user();
 
@@ -27,7 +35,12 @@ export default async function WeightPage() {
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-md flex-col gap-4 px-4 py-6">
-      <AppShellHeader title="Weight" subtitle="Track bodyweight over time." />
+      <AppShellHeader
+        title="Weight"
+        subtitle="Track bodyweight over time."
+        menu_email={user.email}
+        menu_date={menu_date_label()}
+      />
 
       <section className="rounded-2xl bg-white p-5 shadow-sm">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
