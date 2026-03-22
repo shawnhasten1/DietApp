@@ -327,6 +327,9 @@ export default async function DashboardPage() {
           <Link href="/food" className="rounded-lg bg-slate-50 px-3 py-2 text-center">
             Log Food
           </Link>
+          <Link href="/daily" className="rounded-lg bg-slate-50 px-3 py-2 text-center">
+            Daily Log
+          </Link>
           <Link href="/recipes" className="rounded-lg bg-slate-50 px-3 py-2 text-center">
             Recipe Builder
           </Link>

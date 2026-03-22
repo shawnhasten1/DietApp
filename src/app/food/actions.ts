@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { FoodSource } from "@prisma/client";
 import { z } from "zod";
 import { require_authenticated_user } from "@/lib/authz";
+import { normalize_meal_type } from "@/lib/meal-types";
 import { prisma } from "@/lib/prisma";
 
 type FoodItemLookupInput = z.infer<typeof create_food_log_schema>;
@@ -68,6 +69,11 @@ const update_food_log_schema = z.object({
   notes: z.string().max(1000).nullable(),
 });
 
+function parse_meal_type(value: FormDataEntryValue | null): "breakfast" | "lunch" | "dinner" | "snack" {
+  const raw = optional_string(value);
+  return normalize_meal_type(raw) ?? "snack";
+}
+
 function build_food_item_match_conditions(data: FoodItemLookupInput) {
   const shared_fields = {
     name: data.name,
@@ -127,7 +133,7 @@ export async function create_food_log_action(form_data: FormData) {
     source: (required_string(form_data.get("source")).toUpperCase() as FoodSource) || FoodSource.MANUAL,
     source_ref: optional_string(form_data.get("source_ref")),
     servings: number_or_null(form_data.get("servings")) ?? -1,
-    meal_type: optional_string(form_data.get("meal_type")),
+    meal_type: parse_meal_type(form_data.get("meal_type")),
     consumed_at: parse_datetime_or_now(form_data.get("consumed_at")),
     notes: optional_string(form_data.get("notes")),
   });
@@ -189,7 +195,7 @@ export async function update_food_log_action(form_data: FormData) {
   const parsed = update_food_log_schema.safeParse({
     log_id: required_string(form_data.get("log_id")),
     servings: number_or_null(form_data.get("servings")) ?? -1,
-    meal_type: optional_string(form_data.get("meal_type")),
+    meal_type: parse_meal_type(form_data.get("meal_type")),
     consumed_at: parse_datetime_or_now(form_data.get("consumed_at")),
     notes: optional_string(form_data.get("notes")),
   });

@@ -7,6 +7,7 @@ import {
   delete_food_log_action,
   update_food_log_action,
 } from "@/app/food/actions";
+import { meal_type_labels, meal_type_values, normalize_meal_type, type MealTypeValue } from "@/lib/meal-types";
 
 function datetime_local_value(date: Date): string {
   const timezone_offset_ms = new Date().getTimezoneOffset() * 60_000;
@@ -19,6 +20,10 @@ function menu_date_label(): string {
     month: "short",
     day: "numeric",
   });
+}
+
+function meal_value_or_default(value: string | null): MealTypeValue {
+  return normalize_meal_type(value) ?? "snack";
 }
 
 export default async function FoodPage() {
@@ -79,12 +84,17 @@ export default async function FoodPage() {
                       defaultValue={Number(log.servings)}
                       className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
                     />
-                    <input
+                    <select
                       name="meal_type"
-                      defaultValue={log.meal_type ?? ""}
-                      placeholder="Meal type"
+                      defaultValue={meal_value_or_default(log.meal_type)}
                       className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                    />
+                    >
+                      {meal_type_values.map((value) => (
+                        <option key={value} value={value}>
+                          {meal_type_labels[value]}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <input
                     name="consumed_at"

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { BarcodeScanner } from "@/components/food/barcode-scanner";
+import { meal_type_labels, meal_type_values, type MealTypeValue } from "@/lib/meal-types";
 
 type ProviderFoodItem = {
   name: string;
@@ -145,7 +146,7 @@ export function FoodLogForm({ action }: FoodLogFormProps) {
   const [fields, set_fields] = useState<EditableFoodFields>(() => to_editable_fields());
   const [provider_serving_label, set_provider_serving_label] = useState<string | null>(null);
   const [auto_scale_base, set_auto_scale_base] = useState<AutoScaleBase | null>(null);
-  const [meal_type, set_meal_type] = useState("meal");
+  const [meal_type, set_meal_type] = useState<MealTypeValue>("snack");
   const [servings, set_servings] = useState("1");
   const [consumed_at, set_consumed_at] = useState("");
   const [notes, set_notes] = useState("");
@@ -593,15 +594,21 @@ export function FoodLogForm({ action }: FoodLogFormProps) {
             </div>
             <div className="space-y-1">
               <label className="text-sm font-medium text-slate-700" htmlFor="meal_type">
-                Meal Type
+                Meal
               </label>
-              <input
+              <select
                 id="meal_type"
                 name="meal_type"
                 value={meal_type}
-                onChange={(event) => set_meal_type(event.target.value)}
+                onChange={(event) => set_meal_type(event.target.value as MealTypeValue)}
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-base"
-              />
+              >
+                {meal_type_values.map((value) => (
+                  <option key={value} value={value}>
+                    {meal_type_labels[value]}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
