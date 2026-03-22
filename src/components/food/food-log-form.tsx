@@ -22,8 +22,15 @@ type ProviderFoodItem = {
   source_ref: string | null;
 };
 
+type QuickPickFoodItem = ProviderFoodItem & {
+  times_logged: number;
+  last_logged_at: string;
+  suggested_meal_type: MealTypeValue;
+};
+
 type FoodLogFormProps = {
   action: (form_data: FormData) => void;
+  quick_pick_items?: QuickPickFoodItem[];
 };
 
 type EditableFoodFields = {
@@ -137,7 +144,20 @@ function to_scaled_fields(base: AutoScaleBase, next_serving_size_raw: string): P
   };
 }
 
-export function FoodLogForm({ action }: FoodLogFormProps) {
+function format_quick_pick_time(value: string): string {
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return "recently";
+  }
+
+  return parsed.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+export function FoodLogForm({ action, quick_pick_items = [] }: FoodLogFormProps) {
   const [search_query, set_search_query] = useState("");
   const [upc_query, set_upc_query] = useState("");
   const [search_results, set_search_results] = useState<ProviderFoodItem[]>([]);
@@ -182,6 +202,13 @@ export function FoodLogForm({ action }: FoodLogFormProps) {
     }
 
     set_auto_scale_base(null);
+  }
+
+  function choose_quick_pick_item(item: QuickPickFoodItem) {
+    choose_provider_item(item);
+    set_meal_type(item.suggested_meal_type);
+    set_servings("1");
+    set_provider_error(null);
   }
 
   function on_manual_nutrient_change(
@@ -277,6 +304,39 @@ export function FoodLogForm({ action }: FoodLogFormProps) {
 
   return (
     <div className="space-y-4">
+      {quick_pick_items.length > 0 ? (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Common And Recent Foods
+          </p>
+          <div className="max-h-56 space-y-2 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2">
+            {quick_pick_items.map((item) => (
+              <button
+                key={`quick-${item.name}-${item.source_ref ?? item.upc ?? item.last_logged_at}`}
+                type="button"
+                onClick={() => choose_quick_pick_item(item)}
+                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left"
+              >
+                <p className="text-sm font-semibold text-slate-900">{item.name}</p>
+                <p className="text-xs text-slate-600">
+                  {item.brand ?? "No brand"}
+                  {" | "}
+                  {item.calories}
+                  {" cal"}
+                  {" | "}
+                  {meal_type_labels[item.suggested_meal_type]}
+                </p>
+                <p className="text-xs text-slate-500">
+                  Logged {item.times_logged}x
+                  {" | "}
+                  Last {format_quick_pick_time(item.last_logged_at)}
+                </p>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
           Food Lookup
