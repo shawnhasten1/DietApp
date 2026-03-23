@@ -59,6 +59,28 @@ export default async function EditRecipePage({
     notFound();
   }
 
+  const saved_recipes = await prisma.recipe.findMany({
+    where: {
+      user_id: user.id,
+      id: {
+        not: recipe.id,
+      },
+    },
+    include: {
+      ingredients: {
+        include: {
+          food_item: true,
+        },
+        orderBy: {
+          created_at: "asc",
+        },
+      },
+    },
+    orderBy: {
+      created_at: "desc",
+    },
+  });
+
   const initial_recipe = {
     name: recipe.name,
     servings: Number(recipe.servings),
@@ -94,6 +116,42 @@ export default async function EditRecipePage({
     })),
   };
 
+  const saved_recipe_templates = saved_recipes.map((saved_recipe) => ({
+    id: saved_recipe.id,
+    name: saved_recipe.name,
+    servings: Number(saved_recipe.servings),
+    notes: saved_recipe.notes,
+    ingredients: saved_recipe.ingredients.map((ingredient) => ({
+      name: ingredient.food_item.name,
+      brand: ingredient.food_item.brand,
+      upc: ingredient.food_item.upc,
+      serving_size:
+        ingredient.food_item.serving_size !== null
+          ? Number(ingredient.food_item.serving_size)
+          : null,
+      serving_unit: ingredient.food_item.serving_unit,
+      serving_size_label:
+        ingredient.food_item.serving_size !== null
+          ? `1 ${ingredient.food_item.serving_unit ?? "serving"} (${Number(
+              ingredient.food_item.serving_size,
+            )} ${ingredient.food_item.serving_unit ?? ""})`
+          : null,
+      calories: ingredient.food_item.calories,
+      protein_g: Number(ingredient.food_item.protein_g),
+      carbs_g: Number(ingredient.food_item.carbs_g),
+      fat_g: Number(ingredient.food_item.fat_g),
+      fiber_g:
+        ingredient.food_item.fiber_g !== null ? Number(ingredient.food_item.fiber_g) : null,
+      sugar_g:
+        ingredient.food_item.sugar_g !== null ? Number(ingredient.food_item.sugar_g) : null,
+      sodium_mg:
+        ingredient.food_item.sodium_mg !== null ? Number(ingredient.food_item.sodium_mg) : null,
+      source: source_to_form_source(ingredient.food_item.source),
+      source_ref: ingredient.food_item.source_ref,
+      quantity: Number(ingredient.quantity),
+    })),
+  }));
+
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-md flex-col gap-4 px-4 py-6">
       <AppShellHeader
@@ -119,6 +177,7 @@ export default async function EditRecipePage({
           <RecipeBuilderForm
             action={update_recipe_action}
             initial_recipe={initial_recipe}
+            saved_recipes={saved_recipe_templates}
             hidden_fields={{ recipe_id: recipe.id }}
             submit_label="Save Recipe Changes"
           />

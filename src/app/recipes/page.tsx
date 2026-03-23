@@ -25,6 +25,21 @@ function now_datetime_local_value(): string {
   return format_datetime_local_in_app_time_zone(new Date());
 }
 
+function source_to_form_source(
+  source: "MANUAL" | "EDAMAM" | "OPEN_FOOD_FACTS" | "OTHER",
+): "manual" | "edamam" | "open_food_facts" | "other" {
+  switch (source) {
+    case "MANUAL":
+      return "manual";
+    case "EDAMAM":
+      return "edamam";
+    case "OPEN_FOOD_FACTS":
+      return "open_food_facts";
+    default:
+      return "other";
+  }
+}
+
 function summarize_recipe(
   recipe: Array<{
     quantity: number;
@@ -74,6 +89,42 @@ export default async function RecipesPage() {
     },
   });
 
+  const saved_recipe_templates = recipes.map((recipe) => ({
+    id: recipe.id,
+    name: recipe.name,
+    servings: Number(recipe.servings),
+    notes: recipe.notes,
+    ingredients: recipe.ingredients.map((ingredient) => ({
+      name: ingredient.food_item.name,
+      brand: ingredient.food_item.brand,
+      upc: ingredient.food_item.upc,
+      serving_size:
+        ingredient.food_item.serving_size !== null
+          ? Number(ingredient.food_item.serving_size)
+          : null,
+      serving_unit: ingredient.food_item.serving_unit,
+      serving_size_label:
+        ingredient.food_item.serving_size !== null
+          ? `1 ${ingredient.food_item.serving_unit ?? "serving"} (${Number(
+              ingredient.food_item.serving_size,
+            )} ${ingredient.food_item.serving_unit ?? ""})`
+          : null,
+      calories: ingredient.food_item.calories,
+      protein_g: Number(ingredient.food_item.protein_g),
+      carbs_g: Number(ingredient.food_item.carbs_g),
+      fat_g: Number(ingredient.food_item.fat_g),
+      fiber_g:
+        ingredient.food_item.fiber_g !== null ? Number(ingredient.food_item.fiber_g) : null,
+      sugar_g:
+        ingredient.food_item.sugar_g !== null ? Number(ingredient.food_item.sugar_g) : null,
+      sodium_mg:
+        ingredient.food_item.sodium_mg !== null ? Number(ingredient.food_item.sodium_mg) : null,
+      source: source_to_form_source(ingredient.food_item.source),
+      source_ref: ingredient.food_item.source_ref,
+      quantity: Number(ingredient.quantity),
+    })),
+  }));
+
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-md flex-col gap-4 px-4 py-6">
       <AppShellHeader
@@ -88,7 +139,7 @@ export default async function RecipesPage() {
           Create Recipe
         </h2>
         <div className="mt-4">
-          <RecipeBuilderForm action={create_recipe_action} />
+          <RecipeBuilderForm action={create_recipe_action} saved_recipes={saved_recipe_templates} />
         </div>
       </section>
 
