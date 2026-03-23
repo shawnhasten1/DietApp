@@ -187,6 +187,7 @@ export async function create_food_log_action(form_data: FormData) {
   });
 
   revalidatePath("/food");
+  revalidatePath("/daily");
   revalidatePath("/dashboard");
 }
 
@@ -223,6 +224,7 @@ export async function update_food_log_action(form_data: FormData) {
   }
 
   revalidatePath("/food");
+  revalidatePath("/daily");
   revalidatePath("/dashboard");
 }
 
@@ -242,5 +244,6 @@ export async function delete_food_log_action(form_data: FormData) {
   });
 
   revalidatePath("/food");
+  revalidatePath("/daily");
   revalidatePath("/dashboard");
 }

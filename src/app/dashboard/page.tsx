@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AppShellHeader } from "@/components/app-shell-header";
+import { MealAddFoodSheet } from "@/components/food/meal-add-food-sheet";
 import {
   add_days_to_day_key,
   day_bounds_for_date_in_app_time_zone,
@@ -10,6 +11,9 @@ import {
 } from "@/lib/app-time";
 import { prisma } from "@/lib/prisma";
 import { require_authenticated_user } from "@/lib/authz";
+import { create_food_log_action } from "@/app/food/actions";
+import { meal_type_labels, meal_type_values, normalize_meal_type, type MealTypeValue } from "@/lib/meal-types";
+import { build_quick_pick_items } from "@/server/food/build-quick-picks";
 import { get_daily_summary } from "@/server/summary/get-daily-summary";
 
 type CalorieTrendDay = {
@@ -127,10 +131,15 @@ function format_signed_number(value: number): string {
   return String(value);
 }
 
+function round_to_tenth(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
 export default async function DashboardPage() {
   const user = await require_authenticated_user();
   const trend_day_keys = get_last_n_day_keys(7);
   const trend_start = day_bounds_for_key_in_app_time_zone(trend_day_keys[0])?.day_start ?? new Date(0);
+  const today_bounds = day_bounds_for_date_in_app_time_zone(new Date());
 
   const [
     summary,
@@ -138,6 +147,8 @@ export default async function DashboardPage() {
     latest_weight,
     recent_food_logs,
     recent_exercise_logs,
+    today_food_logs,
+    quick_pick_logs,
     trend_food_logs,
     trend_exercise_logs,
     trend_weight_entries,
@@ -168,6 +179,33 @@ export default async function DashboardPage() {
       where: { user_id: user.id },
       orderBy: { performed_at: "desc" },
       take: 5,
+    }),
+    prisma.foodLog.findMany({
+      where: {
+        user_id: user.id,
+        consumed_at: {
+          gte: today_bounds.day_start,
+          lt: today_bounds.day_end,
+        },
+      },
+      include: {
+        food_item: true,
+      },
+      orderBy: {
+        consumed_at: "asc",
+      },
+    }),
+    prisma.foodLog.findMany({
+      where: {
+        user_id: user.id,
+      },
+      include: {
+        food_item: true,
+      },
+      orderBy: {
+        consumed_at: "desc",
+      },
+      take: 120,
     }),
     prisma.foodLog.findMany({
       where: {
@@ -211,6 +249,18 @@ export default async function DashboardPage() {
 
   const calorie_trend = build_calorie_trend(trend_day_keys, trend_food_logs, trend_exercise_logs);
   const weight_trend = build_weight_trend(trend_day_keys, trend_weight_entries);
+  const quick_pick_items = build_quick_pick_items(quick_pick_logs);
+  const today_food_by_meal: Record<MealTypeValue, typeof today_food_logs> = {
+    breakfast: [],
+    lunch: [],
+    dinner: [],
+    snack: [],
+  };
+
+  for (const log of today_food_logs) {
+    const meal_type = normalize_meal_type(log.meal_type) ?? "snack";
+    today_food_by_meal[meal_type].push(log);
+  }
 
   const calorie_trend_change = calorie_trend[calorie_trend.length - 1].net - calorie_trend[0].net;
   const known_weights = weight_trend.filter((day) => day.weight_lb !== null);
@@ -315,10 +365,65 @@ export default async function DashboardPage() {
       </section>
 
       <section className="rounded-2xl bg-white p-5 shadow-sm">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Today Meals</h2>
+        <div className="mt-3 space-y-4">
+          {meal_type_values.map((meal_type) => {
+            const meal_logs = today_food_by_meal[meal_type];
+            const meal_calories = meal_logs.reduce((sum, log) => {
+              return sum + Number(log.servings) * log.food_item.calories;
+            }, 0);
+            const meal_protein = meal_logs.reduce((sum, log) => {
+              return sum + Number(log.servings) * Number(log.food_item.protein_g);
+            }, 0);
+            const meal_carbs = meal_logs.reduce((sum, log) => {
+              return sum + Number(log.servings) * Number(log.food_item.carbs_g);
+            }, 0);
+            const meal_fat = meal_logs.reduce((sum, log) => {
+              return sum + Number(log.servings) * Number(log.food_item.fat_g);
+            }, 0);
+
+            return (
+              <div key={meal_type}>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    {meal_type_labels[meal_type]}
+                  </p>
+                  <MealAddFoodSheet
+                    meal_type={meal_type}
+                    action={create_food_log_action}
+                    quick_pick_items={quick_pick_items}
+                  />
+                </div>
+                <p className="mt-1 text-xs text-slate-600">
+                  {Math.round(meal_calories)} cal | P {round_to_tenth(meal_protein)} C{" "}
+                  {round_to_tenth(meal_carbs)} F {round_to_tenth(meal_fat)}
+                </p>
+                {meal_logs.length === 0 ? (
+                  <p className="mt-1 text-sm text-slate-600">No entries yet.</p>
+                ) : (
+                  <div className="mt-2 space-y-2">
+                    {meal_logs.map((log) => (
+                      <div key={log.id} className="rounded-lg bg-slate-50 px-3 py-2">
+                        <p className="text-sm font-semibold text-slate-900">{log.food_item.name}</p>
+                        <p className="text-xs text-slate-600">
+                          {Number(log.servings).toFixed(2)} servings |{" "}
+                          {Math.round(Number(log.servings) * log.food_item.calories)} cal
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="rounded-2xl bg-white p-5 shadow-sm">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Today Actions</h2>
         <div className="mt-3 grid grid-cols-2 gap-2 text-sm font-semibold">
           <Link href="/food" className="rounded-lg bg-slate-50 px-3 py-2 text-center">
-            Log Food
+            Food Tools
           </Link>
           <Link href="/daily" className="rounded-lg bg-slate-50 px-3 py-2 text-center">
             Daily Log

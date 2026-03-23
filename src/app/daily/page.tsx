@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AppShellHeader } from "@/components/app-shell-header";
+import { MealAddFoodSheet } from "@/components/food/meal-add-food-sheet";
 import { require_authenticated_user } from "@/lib/authz";
 import {
   add_days_to_day_key,
@@ -10,6 +11,8 @@ import {
 } from "@/lib/app-time";
 import { meal_type_labels, meal_type_values, normalize_meal_type, type MealTypeValue } from "@/lib/meal-types";
 import { prisma } from "@/lib/prisma";
+import { create_food_log_action } from "@/app/food/actions";
+import { build_quick_pick_items } from "@/server/food/build-quick-picks";
 import { get_daily_summary } from "@/server/summary/get-daily-summary";
 
 function format_menu_date(date: Date): string {
@@ -26,6 +29,10 @@ function format_time(date: Date): string {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+function round_to_tenth(value: number): number {
+  return Math.round(value * 10) / 10;
 }
 
 export default async function DailyPage({
@@ -46,7 +53,7 @@ export default async function DailyPage({
   const { day_start, day_end } = bounds;
   const selected_day = day_start;
 
-  const [summary, food_logs, exercise_logs, weight_entries] = await Promise.all([
+  const [summary, food_logs, recent_food_logs, exercise_logs, weight_entries] = await Promise.all([
     get_daily_summary(user.id, selected_day),
     prisma.foodLog.findMany({
       where: {
@@ -62,6 +69,18 @@ export default async function DailyPage({
       orderBy: {
         consumed_at: "asc",
       },
+    }),
+    prisma.foodLog.findMany({
+      where: {
+        user_id: user.id,
+      },
+      include: {
+        food_item: true,
+      },
+      orderBy: {
+        consumed_at: "desc",
+      },
+      take: 120,
     }),
     prisma.exerciseLog.findMany({
       where: {
@@ -100,6 +119,8 @@ export default async function DailyPage({
     const meal_type = normalize_meal_type(log.meal_type) ?? "snack";
     grouped_food_logs[meal_type].push(log);
   }
+
+  const quick_pick_items = build_quick_pick_items(recent_food_logs);
 
   const previous_day_key = add_days_to_day_key(selected_day_key, -1);
   const next_day_key = add_days_to_day_key(selected_day_key, 1);
@@ -174,9 +195,38 @@ export default async function DailyPage({
         <div className="mt-3 space-y-4">
           {meal_type_values.map((meal_type) => (
             <div key={meal_type}>
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-                {meal_type_labels[meal_type]}
-              </p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  {meal_type_labels[meal_type]}
+                </p>
+                <MealAddFoodSheet
+                  meal_type={meal_type}
+                  action={create_food_log_action}
+                  quick_pick_items={quick_pick_items}
+                />
+              </div>
+              {(() => {
+                const meal_logs = grouped_food_logs[meal_type];
+                const meal_calories = meal_logs.reduce((sum, log) => {
+                  return sum + Number(log.servings) * log.food_item.calories;
+                }, 0);
+                const meal_protein = meal_logs.reduce((sum, log) => {
+                  return sum + Number(log.servings) * Number(log.food_item.protein_g);
+                }, 0);
+                const meal_carbs = meal_logs.reduce((sum, log) => {
+                  return sum + Number(log.servings) * Number(log.food_item.carbs_g);
+                }, 0);
+                const meal_fat = meal_logs.reduce((sum, log) => {
+                  return sum + Number(log.servings) * Number(log.food_item.fat_g);
+                }, 0);
+
+                return (
+                  <p className="mt-1 text-xs text-slate-600">
+                    {Math.round(meal_calories)} cal | P {round_to_tenth(meal_protein)} C{" "}
+                    {round_to_tenth(meal_carbs)} F {round_to_tenth(meal_fat)}
+                  </p>
+                );
+              })()}
               {grouped_food_logs[meal_type].length === 0 ? (
                 <p className="mt-1 text-sm text-slate-600">No entries.</p>
               ) : (

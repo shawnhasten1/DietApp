@@ -488,6 +488,7 @@ export async function log_recipe_food_action(form_data: FormData) {
 
   revalidatePath("/recipes");
   revalidatePath("/food");
+  revalidatePath("/daily");
   revalidatePath("/dashboard");
 }
 

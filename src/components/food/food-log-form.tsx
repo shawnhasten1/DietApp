@@ -2,35 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { BarcodeScanner } from "@/components/food/barcode-scanner";
+import type { QuickPickFoodItem, ProviderFoodItem } from "@/lib/food-item-types";
 import { meal_type_labels, meal_type_values, type MealTypeValue } from "@/lib/meal-types";
 
-type ProviderFoodItem = {
-  name: string;
-  brand: string | null;
-  upc: string | null;
-  serving_size: number | null;
-  serving_unit: string | null;
-  serving_size_label: string | null;
-  calories: number;
-  protein_g: number;
-  carbs_g: number;
-  fat_g: number;
-  fiber_g: number | null;
-  sugar_g: number | null;
-  sodium_mg: number | null;
-  source: "manual" | "edamam" | "open_food_facts" | "other";
-  source_ref: string | null;
-};
-
-type QuickPickFoodItem = ProviderFoodItem & {
-  times_logged: number;
-  last_logged_at: string;
-  suggested_meal_type: MealTypeValue;
-};
-
 type FoodLogFormProps = {
-  action: (form_data: FormData) => void;
+  action: (form_data: FormData) => Promise<void> | void;
   quick_pick_items?: QuickPickFoodItem[];
+  initial_meal_type?: MealTypeValue;
+  on_submit_complete?: () => void;
 };
 
 type EditableFoodFields = {
@@ -157,7 +136,12 @@ function format_quick_pick_time(value: string): string {
   });
 }
 
-export function FoodLogForm({ action, quick_pick_items = [] }: FoodLogFormProps) {
+export function FoodLogForm({
+  action,
+  quick_pick_items = [],
+  initial_meal_type = "snack",
+  on_submit_complete,
+}: FoodLogFormProps) {
   const [search_query, set_search_query] = useState("");
   const [upc_query, set_upc_query] = useState("");
   const [search_results, set_search_results] = useState<ProviderFoodItem[]>([]);
@@ -166,7 +150,7 @@ export function FoodLogForm({ action, quick_pick_items = [] }: FoodLogFormProps)
   const [fields, set_fields] = useState<EditableFoodFields>(() => to_editable_fields());
   const [provider_serving_label, set_provider_serving_label] = useState<string | null>(null);
   const [auto_scale_base, set_auto_scale_base] = useState<AutoScaleBase | null>(null);
-  const [meal_type, set_meal_type] = useState<MealTypeValue>("snack");
+  const [meal_type, set_meal_type] = useState<MealTypeValue>(initial_meal_type);
   const [servings, set_servings] = useState("1");
   const [consumed_at, set_consumed_at] = useState("");
   const [notes, set_notes] = useState("");
@@ -178,6 +162,15 @@ export function FoodLogForm({ action, quick_pick_items = [] }: FoodLogFormProps)
   useEffect(() => {
     set_consumed_at(now_local_datetime_value());
   }, []);
+
+  useEffect(() => {
+    set_meal_type(initial_meal_type);
+  }, [initial_meal_type]);
+
+  async function submit_form(form_data: FormData) {
+    await action(form_data);
+    on_submit_complete?.();
+  }
 
   function patch_fields(patch: Partial<EditableFoodFields>) {
     set_fields((current) => ({ ...current, ...patch }));
@@ -424,7 +417,7 @@ export function FoodLogForm({ action, quick_pick_items = [] }: FoodLogFormProps)
         </div>
       ) : null}
 
-      <form action={action} className="space-y-3">
+      <form action={submit_form} className="space-y-3">
         <div className="grid grid-cols-1 gap-3">
           <div className="space-y-1">
             <label className="text-sm font-medium text-slate-700" htmlFor="name">
