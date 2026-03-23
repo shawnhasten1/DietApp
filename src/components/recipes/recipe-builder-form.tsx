@@ -2,24 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { BarcodeScanner } from "@/components/food/barcode-scanner";
-
-type ProviderFoodItem = {
-  name: string;
-  brand: string | null;
-  upc: string | null;
-  serving_size: number | null;
-  serving_unit: string | null;
-  serving_size_label: string | null;
-  calories: number;
-  protein_g: number;
-  carbs_g: number;
-  fat_g: number;
-  fiber_g: number | null;
-  sugar_g: number | null;
-  sodium_mg: number | null;
-  source: "manual" | "edamam" | "open_food_facts" | "other";
-  source_ref: string | null;
-};
+import type { ProviderFoodItem } from "@/lib/food-item-types";
 
 type RecipeIngredientDraft = ProviderFoodItem & {
   id: string;
@@ -46,7 +29,7 @@ type RecipeBuilderFormProps = {
       fiber_g: number | null;
       sugar_g: number | null;
       sodium_mg: number | null;
-      source: "manual" | "edamam" | "open_food_facts" | "other";
+      source: "manual" | "edamam" | "open_food_facts" | "usda" | "other";
       source_ref: string | null;
       quantity: number;
     }>;
@@ -59,6 +42,22 @@ function round_to_tenth(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
+function source_to_food_source_enum(source: ProviderFoodItem["source"]): string {
+  switch (source) {
+    case "manual":
+      return "MANUAL";
+    case "edamam":
+      return "EDAMAM";
+    case "open_food_facts":
+      return "OPEN_FOOD_FACTS";
+    case "usda":
+    case "other":
+      return "OTHER";
+    default:
+      return "MANUAL";
+  }
+}
+
 export function RecipeBuilderForm({
   action,
   initial_recipe,
@@ -69,6 +68,7 @@ export function RecipeBuilderForm({
   const [upc_query, set_upc_query] = useState("");
   const [provider_error, set_provider_error] = useState<string | null>(null);
   const [is_searching, set_is_searching] = useState(false);
+  const [is_hydrating_result, set_is_hydrating_result] = useState(false);
   const [search_results, set_search_results] = useState<ProviderFoodItem[]>([]);
   const [ingredients, set_ingredients] = useState<RecipeIngredientDraft[]>(() =>
     initial_recipe
@@ -79,6 +79,7 @@ export function RecipeBuilderForm({
         }))
       : [],
   );
+  const is_busy = is_searching || is_hydrating_result;
 
   const total_nutrients = useMemo(() => {
     return ingredients.reduce(
@@ -123,7 +124,7 @@ export function RecipeBuilderForm({
         fiber_g: ingredient.fiber_g,
         sugar_g: ingredient.sugar_g,
         sodium_mg: ingredient.sodium_mg,
-        source: ingredient.source.toUpperCase(),
+        source: source_to_food_source_enum(ingredient.source),
         source_ref: ingredient.source_ref,
         quantity: Number(ingredient.quantity),
       })),
@@ -205,12 +206,46 @@ export function RecipeBuilderForm({
     void lookup_by_upc(upc_code);
   }
 
-  function add_ingredient(item: ProviderFoodItem) {
+  async function hydrate_provider_item(item: ProviderFoodItem): Promise<ProviderFoodItem> {
+    if (item.source !== "edamam") {
+      return item;
+    }
+
+    set_is_hydrating_result(true);
+
+    try {
+      const response = await fetch("/api/nutrition/item/resolve", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ item }),
+      });
+
+      if (!response.ok) {
+        return item;
+      }
+
+      const data = (await response.json()) as {
+        item?: ProviderFoodItem | null;
+      };
+
+      return data.item ?? item;
+    } catch {
+      return item;
+    } finally {
+      set_is_hydrating_result(false);
+    }
+  }
+
+  async function add_ingredient(item: ProviderFoodItem) {
+    const hydrated_item = await hydrate_provider_item(item);
+
     set_ingredients((current) => [
       ...current,
       {
-        ...item,
-        id: `${item.source_ref ?? item.name}-${Date.now()}-${current.length}`,
+        ...hydrated_item,
+        id: `${hydrated_item.source_ref ?? hydrated_item.name}-${Date.now()}-${current.length}`,
         quantity: "1",
       },
     ]);
@@ -276,7 +311,7 @@ export function RecipeBuilderForm({
             <button
               type="button"
               onClick={search_by_name}
-              disabled={is_searching}
+              disabled={is_busy}
               className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-60"
             >
               Search
@@ -294,7 +329,7 @@ export function RecipeBuilderForm({
               onClick={() => {
                 void lookup_by_upc();
               }}
-              disabled={is_searching}
+              disabled={is_busy}
               className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-60"
             >
               Lookup
@@ -302,8 +337,11 @@ export function RecipeBuilderForm({
           </div>
         </div>
         <div className="mt-3">
-          <BarcodeScanner on_detect={on_barcode_detected} disabled={is_searching} />
+          <BarcodeScanner on_detect={on_barcode_detected} disabled={is_busy} />
         </div>
+        {is_hydrating_result ? (
+          <p className="mt-2 text-xs text-slate-600">Loading full nutrients for selected food...</p>
+        ) : null}
         {provider_error ? <p className="mt-2 text-xs text-rose-700">{provider_error}</p> : null}
       </section>
 
@@ -323,7 +361,10 @@ export function RecipeBuilderForm({
                 </p>
                 <button
                   type="button"
-                  onClick={() => add_ingredient(item)}
+                  onClick={() => {
+                    void add_ingredient(item);
+                  }}
+                  disabled={is_busy}
                   className="mt-2 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white"
                 >
                   Add Ingredient

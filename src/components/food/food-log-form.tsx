@@ -40,6 +40,22 @@ type AutoScaleBase = {
   sodium_mg: number | null;
 };
 
+function provider_source_to_form_source(source: ProviderFoodItem["source"]): string {
+  switch (source) {
+    case "manual":
+      return "MANUAL";
+    case "edamam":
+      return "EDAMAM";
+    case "open_food_facts":
+      return "OPEN_FOOD_FACTS";
+    case "usda":
+    case "other":
+      return "OTHER";
+    default:
+      return "MANUAL";
+  }
+}
+
 function now_local_datetime_value(): string {
   const date = new Date();
   const timezone_offset_ms = date.getTimezoneOffset() * 60_000;
@@ -80,7 +96,7 @@ function to_editable_fields(item?: ProviderFoodItem): EditableFoodFields {
     fiber_g: item.fiber_g !== null ? String(item.fiber_g) : "",
     sugar_g: item.sugar_g !== null ? String(item.sugar_g) : "",
     sodium_mg: item.sodium_mg !== null ? String(item.sodium_mg) : "",
-    source: item.source.toUpperCase(),
+    source: provider_source_to_form_source(item.source),
     source_ref: item.source_ref ?? "",
   };
 }
@@ -147,6 +163,7 @@ export function FoodLogForm({
   const [search_results, set_search_results] = useState<ProviderFoodItem[]>([]);
   const [provider_error, set_provider_error] = useState<string | null>(null);
   const [is_searching, set_is_searching] = useState(false);
+  const [is_hydrating_result, set_is_hydrating_result] = useState(false);
   const [fields, set_fields] = useState<EditableFoodFields>(() => to_editable_fields());
   const [provider_serving_label, set_provider_serving_label] = useState<string | null>(null);
   const [auto_scale_base, set_auto_scale_base] = useState<AutoScaleBase | null>(null);
@@ -156,8 +173,11 @@ export function FoodLogForm({
   const [notes, set_notes] = useState("");
 
   const has_results = useMemo(() => search_results.length > 0, [search_results.length]);
+  const normalized_search_query = useMemo(() => search_query.trim(), [search_query]);
+  const has_debug_search = useMemo(() => normalized_search_query.length >= 2, [normalized_search_query]);
   const normalized_upc_query = useMemo(() => upc_query.replace(/\D/g, ""), [upc_query]);
   const has_debug_upc = useMemo(() => /^\d{8,14}$/.test(normalized_upc_query), [normalized_upc_query]);
+  const is_busy = is_searching || is_hydrating_result;
 
   useEffect(() => {
     set_consumed_at(now_local_datetime_value());
@@ -176,7 +196,7 @@ export function FoodLogForm({
     set_fields((current) => ({ ...current, ...patch }));
   }
 
-  function choose_provider_item(item: ProviderFoodItem) {
+  function apply_provider_item(item: ProviderFoodItem) {
     set_fields(to_editable_fields(item));
     set_provider_serving_label(item.serving_size_label ?? null);
 
@@ -197,8 +217,47 @@ export function FoodLogForm({
     set_auto_scale_base(null);
   }
 
+  async function hydrate_provider_item(item: ProviderFoodItem): Promise<ProviderFoodItem> {
+    if (item.source !== "edamam") {
+      return item;
+    }
+
+    set_is_hydrating_result(true);
+
+    try {
+      const response = await fetch("/api/nutrition/item/resolve", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ item }),
+      });
+
+      if (!response.ok) {
+        return item;
+      }
+
+      const data = (await response.json()) as {
+        item?: ProviderFoodItem | null;
+        hydration_applied?: boolean;
+      };
+
+      return data.item ?? item;
+    } catch {
+      return item;
+    } finally {
+      set_is_hydrating_result(false);
+    }
+  }
+
+  async function choose_provider_item(item: ProviderFoodItem): Promise<ProviderFoodItem> {
+    const hydrated_item = await hydrate_provider_item(item);
+    apply_provider_item(hydrated_item);
+    return hydrated_item;
+  }
+
   function choose_quick_pick_item(item: QuickPickFoodItem) {
-    choose_provider_item(item);
+    apply_provider_item(item);
     set_meal_type(item.suggested_meal_type);
     set_servings("1");
     set_provider_error(null);
@@ -247,8 +306,8 @@ export function FoodLogForm({
         return;
       }
 
-      choose_provider_item(data.item);
-      set_search_results([data.item]);
+      const selected_item = await choose_provider_item(data.item);
+      set_search_results([selected_item]);
     } catch {
       set_provider_error("Lookup failed. Please try again.");
     } finally {
@@ -344,7 +403,7 @@ export function FoodLogForm({
             />
             <button
               type="button"
-              disabled={is_searching}
+              disabled={is_busy}
               onClick={search_by_name}
               className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-60"
             >
@@ -360,7 +419,7 @@ export function FoodLogForm({
             />
             <button
               type="button"
-              disabled={is_searching}
+              disabled={is_busy}
               onClick={() => {
                 void lookup_by_upc();
               }}
@@ -380,9 +439,24 @@ export function FoodLogForm({
             View Raw UPC API Debug Data
           </a>
         ) : null}
+        {has_debug_search ? (
+          <a
+            href={`/api/nutrition/search/debug?q=${encodeURIComponent(
+              normalized_search_query,
+            )}&provider=edamam&limit=12`}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-2 ml-3 inline-block text-xs font-semibold text-slate-700 underline"
+          >
+            View Raw Search Debug (Edamam)
+          </a>
+        ) : null}
         <div className="mt-3">
-          <BarcodeScanner on_detect={on_barcode_detected} disabled={is_searching} />
+          <BarcodeScanner on_detect={on_barcode_detected} disabled={is_busy} />
         </div>
+        {is_hydrating_result ? (
+          <p className="mt-2 text-xs text-slate-600">Loading full nutrients for selected food...</p>
+        ) : null}
         {provider_error ? <p className="mt-2 text-xs text-rose-700">{provider_error}</p> : null}
       </div>
 
@@ -394,7 +468,9 @@ export function FoodLogForm({
               <button
                 key={`${item.source_ref ?? item.name}-${index}`}
                 type="button"
-                onClick={() => choose_provider_item(item)}
+                onClick={() => {
+                  void choose_provider_item(item);
+                }}
                 className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left"
               >
                 <p className="text-sm font-semibold text-slate-900">{item.name}</p>

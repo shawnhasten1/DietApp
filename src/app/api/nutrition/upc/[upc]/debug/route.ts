@@ -23,6 +23,10 @@ function provider_label(value: unknown): string {
     return "edamam";
   }
 
+  if (constructor_name.toLowerCase().includes("usda")) {
+    return "usda";
+  }
+
   return constructor_name || "unknown";
 }
 

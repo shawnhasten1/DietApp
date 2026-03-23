@@ -4,6 +4,7 @@ export type ProviderFoodItem = {
   name: string;
   brand: string | null;
   upc: string | null;
+  selection_ref?: string | null;
   serving_size: number | null;
   serving_unit: string | null;
   serving_size_label: string | null;
@@ -14,7 +15,7 @@ export type ProviderFoodItem = {
   fiber_g: number | null;
   sugar_g: number | null;
   sodium_mg: number | null;
-  source: "manual" | "edamam" | "open_food_facts" | "other";
+  source: "manual" | "edamam" | "open_food_facts" | "usda" | "other";
   source_ref: string | null;
 };
 
