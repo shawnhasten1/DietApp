@@ -25,14 +25,14 @@ export function MealAddFoodSheet({ meal_type, action, quick_pick_items }: MealAd
       </button>
 
       {is_open ? (
-        <div className="fixed inset-0 z-50 flex items-end bg-slate-900/50">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 px-4">
           <button
             type="button"
             aria-label="Close add food panel"
             onClick={() => set_is_open(false)}
             className="absolute inset-0"
           />
-          <section className="relative z-10 max-h-[90vh] w-full overflow-y-auto rounded-t-2xl bg-white p-4 shadow-2xl">
+          <section className="relative z-10 max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-4 shadow-2xl">
             <div className="mb-3 flex items-center justify-between">
               <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">
                 Add {meal_type_labels[meal_type]}
