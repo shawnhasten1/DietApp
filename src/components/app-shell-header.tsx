@@ -25,7 +25,7 @@ export function AppShellHeader({ title, subtitle, menu_email, menu_date }: AppSh
   const [menu_open, set_menu_open] = useState(false);
 
   return (
-    <header>
+    <header className="sticky top-0 z-40 -mx-1 bg-slate-100/95 px-1 py-1 backdrop-blur">
       <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
         <button
           type="button"

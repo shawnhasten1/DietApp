@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AppShellHeader } from "@/components/app-shell-header";
+import { DashboardMealLogItem } from "@/components/food/dashboard-meal-log-item";
 import { MealAddFoodSheet } from "@/components/food/meal-add-food-sheet";
 import {
   add_days_to_day_key,
@@ -7,11 +8,16 @@ import {
   day_bounds_for_key_in_app_time_zone,
   day_key_in_app_time_zone,
   format_date_in_app_time_zone,
+  format_datetime_local_in_app_time_zone,
   format_day_key_in_app_time_zone,
 } from "@/lib/app-time";
 import { prisma } from "@/lib/prisma";
 import { require_authenticated_user } from "@/lib/authz";
-import { create_food_log_action } from "@/app/food/actions";
+import {
+  create_food_log_action,
+  delete_food_log_action,
+  update_food_log_action,
+} from "@/app/food/actions";
 import { meal_type_labels, meal_type_values, normalize_meal_type, type MealTypeValue } from "@/lib/meal-types";
 import { build_quick_pick_items } from "@/server/food/build-quick-picks";
 import { get_daily_summary } from "@/server/summary/get-daily-summary";
@@ -367,7 +373,7 @@ export default async function DashboardPage() {
       <section className="rounded-2xl bg-white p-5 shadow-sm">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Today Meals</h2>
         <div className="mt-3 space-y-4">
-          {meal_type_values.map((meal_type) => {
+          {meal_type_values.map((meal_type, index) => {
             const meal_logs = today_food_by_meal[meal_type];
             const meal_calories = meal_logs.reduce((sum, log) => {
               return sum + Number(log.servings) * log.food_item.calories;
@@ -383,7 +389,10 @@ export default async function DashboardPage() {
             }, 0);
 
             return (
-              <div key={meal_type}>
+              <div
+                key={meal_type}
+                className={index > 0 ? "border-t border-slate-200 pt-4" : ""}
+              >
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
                     {meal_type_labels[meal_type]}
@@ -403,13 +412,21 @@ export default async function DashboardPage() {
                 ) : (
                   <div className="mt-2 space-y-2">
                     {meal_logs.map((log) => (
-                      <div key={log.id} className="rounded-lg bg-slate-50 px-3 py-2">
-                        <p className="text-sm font-semibold text-slate-900">{log.food_item.name}</p>
-                        <p className="text-xs text-slate-600">
-                          {Number(log.servings).toFixed(2)} servings |{" "}
-                          {Math.round(Number(log.servings) * log.food_item.calories)} cal
-                        </p>
-                      </div>
+                      <DashboardMealLogItem
+                        key={log.id}
+                        log={{
+                          id: log.id,
+                          name: log.food_item.name,
+                          brand: log.food_item.brand,
+                          servings: Number(log.servings),
+                          calories_per_serving: log.food_item.calories,
+                          meal_type: normalize_meal_type(log.meal_type) ?? "snack",
+                          consumed_at_local: format_datetime_local_in_app_time_zone(log.consumed_at),
+                          notes: log.notes ?? "",
+                        }}
+                        update_action={update_food_log_action}
+                        delete_action={delete_food_log_action}
+                      />
                     ))}
                   </div>
                 )}
