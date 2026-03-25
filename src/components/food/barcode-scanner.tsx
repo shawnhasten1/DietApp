@@ -7,8 +7,10 @@ type DetectedBarcode = {
   rawValue?: string;
 };
 
+type BarcodeDetectSource = HTMLVideoElement | HTMLImageElement | ImageBitmap;
+
 type BarcodeDetectorInstance = {
-  detect: (source: HTMLVideoElement) => Promise<DetectedBarcode[]>;
+  detect: (source: BarcodeDetectSource) => Promise<DetectedBarcode[]>;
 };
 
 type BarcodeDetectorConstructor = new (options?: {
@@ -25,6 +27,8 @@ type BarcodeScannerProps = {
 
 const NATIVE_BARCODE_FORMATS = ["upc_a", "upc_e", "ean_13", "ean_8"];
 const UPC_PATTERN = /^\d{8,14}$/;
+
+type ZXingModule = typeof import("@zxing/browser");
 
 function get_barcode_detector_constructor(): BarcodeDetectorConstructor | null {
   const maybe_detector = (globalThis as unknown as { BarcodeDetector?: BarcodeDetectorConstructor })
@@ -44,6 +48,48 @@ function has_camera_support(): boolean {
   }
 
   return Boolean(navigator.mediaDevices?.getUserMedia);
+}
+
+function has_photo_scan_support(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  return typeof File !== "undefined";
+}
+
+function create_reader(zxing: ZXingModule) {
+  const reader = new zxing.BrowserMultiFormatReader(undefined, {
+    delayBetweenScanAttempts: 160,
+    delayBetweenScanSuccess: 280,
+  });
+
+  reader.possibleFormats = [
+    zxing.BarcodeFormat.UPC_A,
+    zxing.BarcodeFormat.UPC_E,
+    zxing.BarcodeFormat.EAN_13,
+    zxing.BarcodeFormat.EAN_8,
+  ];
+
+  return reader;
+}
+
+async function load_image_from_file(file: File): Promise<HTMLImageElement> {
+  const object_url = URL.createObjectURL(file);
+
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const next_image = new Image();
+      next_image.decoding = "async";
+      next_image.onload = () => resolve(next_image);
+      next_image.onerror = () => reject(new Error("Could not load selected image."));
+      next_image.src = object_url;
+    });
+
+    return image;
+  } finally {
+    URL.revokeObjectURL(object_url);
+  }
 }
 
 async function wait_for_video_element(
@@ -71,6 +117,8 @@ function get_camera_constraints_candidates(): MediaStreamConstraints[] {
     {
       video: {
         facingMode: { ideal: "environment" },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
       },
       audio: false,
     },
@@ -125,8 +173,24 @@ async function get_camera_stream_with_fallback(): Promise<MediaStream> {
   throw last_error ?? new Error("No camera constraints succeeded.");
 }
 
+async function optimize_stream_for_scanning(stream: MediaStream): Promise<void> {
+  const [track] = stream.getVideoTracks();
+  if (!track) {
+    return;
+  }
+
+  try {
+    await track.applyConstraints({
+      advanced: [{ focusMode: "continuous" } as unknown as MediaTrackConstraintSet],
+    });
+  } catch {
+    // Some browsers do not support focus controls.
+  }
+}
+
 export function BarcodeScanner({ on_detect, disabled = false }: BarcodeScannerProps) {
   const video_ref = useRef<HTMLVideoElement | null>(null);
+  const file_input_ref = useRef<HTMLInputElement | null>(null);
   const stream_ref = useRef<MediaStream | null>(null);
   const detector_ref = useRef<BarcodeDetectorInstance | null>(null);
   const poll_timer_ref = useRef<number | null>(null);
@@ -135,12 +199,14 @@ export function BarcodeScanner({ on_detect, disabled = false }: BarcodeScannerPr
   const zxing_running_ref = useRef(false);
 
   const [is_scanning, set_is_scanning] = useState(false);
+  const [is_processing_photo, set_is_processing_photo] = useState(false);
   const [scan_error, set_scan_error] = useState<string | null>(null);
   const [scan_error_debug, set_scan_error_debug] = useState<string | null>(null);
   const [scan_engine, set_scan_engine] = useState<"native" | "zxing" | null>(null);
   const [capabilities_ready, set_capabilities_ready] = useState(false);
   const [native_supported, set_native_supported] = useState(false);
   const [scanner_available, set_scanner_available] = useState(false);
+  const [photo_scan_available, set_photo_scan_available] = useState(false);
 
   function cleanup_scanner() {
     if (poll_timer_ref.current !== null) {
@@ -200,7 +266,7 @@ export function BarcodeScanner({ on_detect, disabled = false }: BarcodeScannerPr
         return;
       }
     } catch {
-      set_scan_error("Could not read barcode yet. Keep barcode centered and try again.");
+      // Expected occasionally while camera is moving; keep scanning silently.
     } finally {
       detecting_ref.current = false;
     }
@@ -213,6 +279,7 @@ export function BarcodeScanner({ on_detect, disabled = false }: BarcodeScannerPr
     }
 
     const stream = await get_camera_stream_with_fallback();
+    await optimize_stream_for_scanning(stream);
 
     stream_ref.current = stream;
     let detector_formats = NATIVE_BARCODE_FORMATS;
@@ -233,29 +300,15 @@ export function BarcodeScanner({ on_detect, disabled = false }: BarcodeScannerPr
 
     poll_timer_ref.current = window.setInterval(() => {
       void detect_once_native();
-    }, 320);
+    }, 160);
 
     set_scan_engine("native");
   }
 
   async function start_zxing_scan() {
     const video_element = await wait_for_video_element(() => video_ref.current);
-
-    const [{ BrowserMultiFormatReader, BarcodeFormat }] = await Promise.all([
-      import("@zxing/browser"),
-    ]);
-
-    const reader = new BrowserMultiFormatReader(undefined, {
-      delayBetweenScanAttempts: 220,
-      delayBetweenScanSuccess: 400,
-    });
-
-    reader.possibleFormats = [
-      BarcodeFormat.UPC_A,
-      BarcodeFormat.UPC_E,
-      BarcodeFormat.EAN_13,
-      BarcodeFormat.EAN_8,
-    ];
+    const zxing = await import("@zxing/browser");
+    const reader = create_reader(zxing);
 
     let last_error: unknown = null;
 
@@ -293,8 +346,69 @@ export function BarcodeScanner({ on_detect, disabled = false }: BarcodeScannerPr
     set_scan_engine("zxing");
   }
 
+  async function decode_photo_with_native_detector(image: HTMLImageElement): Promise<string | null> {
+    const detector_constructor = get_barcode_detector_constructor() as BarcodeDetectorStatic | null;
+    if (!detector_constructor) {
+      return null;
+    }
+
+    let detector_formats = NATIVE_BARCODE_FORMATS;
+
+    if (typeof detector_constructor.getSupportedFormats === "function") {
+      const supported_formats = await detector_constructor.getSupportedFormats();
+      detector_formats = NATIVE_BARCODE_FORMATS.filter((format) => supported_formats.includes(format));
+    }
+
+    const detector =
+      detector_formats.length > 0
+        ? new detector_constructor({ formats: detector_formats })
+        : new detector_constructor();
+
+    const detections = await detector.detect(image);
+
+    for (const detection of detections) {
+      if (!detection.rawValue) {
+        continue;
+      }
+
+      const upc = normalize_upc(detection.rawValue);
+      if (upc) {
+        return upc;
+      }
+    }
+
+    return null;
+  }
+
+  async function decode_photo_with_zxing(image: HTMLImageElement): Promise<string | null> {
+    const zxing = await import("@zxing/browser");
+    const reader = create_reader(zxing);
+
+    try {
+      const result = await reader.decodeFromImageElement(image);
+      return normalize_upc(result.getText());
+    } catch {
+      return null;
+    }
+  }
+
+  async function decode_photo_file(file: File): Promise<string | null> {
+    const image = await load_image_from_file(file);
+
+    try {
+      const native_upc = await decode_photo_with_native_detector(image);
+      if (native_upc) {
+        return native_upc;
+      }
+    } catch {
+      // Fall through to ZXing fallback.
+    }
+
+    return decode_photo_with_zxing(image);
+  }
+
   async function start_scanner() {
-    if (!scanner_available || disabled) {
+    if (!scanner_available || disabled || is_processing_photo) {
       return;
     }
 
@@ -336,9 +450,50 @@ export function BarcodeScanner({ on_detect, disabled = false }: BarcodeScannerPr
     cleanup_scanner();
   }
 
+  async function on_photo_file_selected(file: File | null) {
+    if (!file || disabled || is_processing_photo) {
+      return;
+    }
+
+    stop_scanner();
+    set_scan_error(null);
+    set_scan_error_debug(null);
+    set_is_processing_photo(true);
+
+    try {
+      const upc = await decode_photo_file(file);
+
+      if (!upc) {
+        set_scan_error("No UPC barcode found in photo. Try a closer, clearer image.");
+        return;
+      }
+
+      on_detect(upc);
+    } catch (error) {
+      set_scan_error(get_scan_error_message(error));
+      set_scan_error_debug(
+        error instanceof Error ? `${error.name}: ${error.message}` : "Photo scan error",
+      );
+    } finally {
+      set_is_processing_photo(false);
+      if (file_input_ref.current) {
+        file_input_ref.current.value = "";
+      }
+    }
+  }
+
+  function open_photo_picker() {
+    if (disabled || is_processing_photo) {
+      return;
+    }
+
+    file_input_ref.current?.click();
+  }
+
   useEffect(() => {
     set_native_supported(Boolean(get_barcode_detector_constructor()));
     set_scanner_available(has_camera_support());
+    set_photo_scan_available(has_photo_scan_support());
     set_capabilities_ready(true);
 
     return () => {
@@ -350,44 +505,73 @@ export function BarcodeScanner({ on_detect, disabled = false }: BarcodeScannerPr
     <div className="rounded-lg border border-slate-200 bg-white p-3">
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Camera Scan</p>
-        {!is_scanning ? (
+        <div className="flex items-center gap-2">
+          {!is_scanning ? (
+            <button
+              type="button"
+              disabled={!capabilities_ready || !scanner_available || disabled || is_processing_photo}
+              onClick={() => {
+                void start_scanner();
+              }}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-50"
+            >
+              Scan Barcode
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={stop_scanner}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
+            >
+              Stop
+            </button>
+          )}
+
           <button
             type="button"
-            disabled={!capabilities_ready || !scanner_available || disabled}
-            onClick={() => {
-              void start_scanner();
-            }}
+            onClick={open_photo_picker}
+            disabled={!photo_scan_available || disabled || is_processing_photo}
             className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-50"
           >
-            Scan Barcode
+            {is_processing_photo ? "Reading Photo..." : "Scan From Photo"}
           </button>
-        ) : (
-          <button
-            type="button"
-            onClick={stop_scanner}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
-          >
-            Stop
-          </button>
-        )}
+        </div>
       </div>
+      <input
+        ref={file_input_ref}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0] ?? null;
+          void on_photo_file_selected(file);
+        }}
+      />
 
       {capabilities_ready && !scanner_available ? (
         <p className="mt-2 text-xs text-slate-600">
-          Camera scan is unavailable on this browser/device. Use manual UPC entry.
+          Camera scan is unavailable on this browser/device. Use photo scan or manual UPC entry.
         </p>
       ) : null}
+      <p className="mt-2 text-xs text-slate-500">
+        Tip: place the barcode flat and move the phone closer slowly. Photo scan helps if your hands
+        shake.
+      </p>
 
       {scan_error ? <p className="mt-2 text-xs text-rose-700">{scan_error}</p> : null}
       {scan_error_debug ? <p className="mt-1 text-[11px] text-slate-500">{scan_error_debug}</p> : null}
 
       {is_scanning ? (
-        <div className="mt-3 overflow-hidden rounded-lg border border-slate-200 bg-black">
-          <video ref={video_ref} className="h-56 w-full object-cover" playsInline muted />
+        <div className="relative mt-3 overflow-hidden rounded-lg border border-slate-200 bg-black">
+          <video ref={video_ref} className="h-64 w-full object-cover" playsInline muted />
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <div className="h-28 w-[78%] rounded-lg border-2 border-emerald-300/90 bg-transparent shadow-[0_0_0_9999px_rgba(0,0,0,0.32)]" />
+          </div>
           <p className="bg-slate-900 px-3 py-2 text-xs text-slate-100">
             {scan_engine === "zxing"
-              ? "Scanning with compatibility mode. Hold barcode steady."
-              : "Point camera at UPC barcode."}
+              ? "Compatibility scan active. Keep barcode inside the frame."
+              : "Point camera at UPC barcode and keep it inside the frame."}
           </p>
         </div>
       ) : null}
