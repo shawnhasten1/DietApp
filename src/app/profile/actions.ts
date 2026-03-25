@@ -39,6 +39,7 @@ const profile_schema = z.object({
   height_inches: z.number().int().min(0).max(11).nullable(),
   target_weight_lb: z.number().min(50).max(1000).nullable(),
   target_calories: z.number().int().min(800).max(12000),
+  avg_tdee_calories: z.number().int().min(1000).max(8000).nullable(),
 });
 
 export async function save_profile_action(form_data: FormData) {
@@ -51,6 +52,7 @@ export async function save_profile_action(form_data: FormData) {
     height_inches: nullable_int(form_data.get("height_inches")),
     target_weight_lb: nullable_decimal(form_data.get("target_weight_lb")),
     target_calories: nullable_int(form_data.get("target_calories")) ?? 2000,
+    avg_tdee_calories: nullable_int(form_data.get("avg_tdee_calories")),
   };
 
   const parsed = profile_schema.safeParse(raw);
@@ -68,6 +70,7 @@ export async function save_profile_action(form_data: FormData) {
       height_inches: parsed.data.height_inches,
       target_weight_lb: parsed.data.target_weight_lb,
       target_calories: parsed.data.target_calories,
+      avg_tdee_calories: parsed.data.avg_tdee_calories,
     },
     create: {
       user_id: user.id,
@@ -77,6 +80,7 @@ export async function save_profile_action(form_data: FormData) {
       height_inches: parsed.data.height_inches,
       target_weight_lb: parsed.data.target_weight_lb,
       target_calories: parsed.data.target_calories,
+      avg_tdee_calories: parsed.data.avg_tdee_calories,
     },
   });
 

@@ -190,6 +190,29 @@ export default async function DailyPage({
         </div>
       </section>
 
+      {summary.avg_tdee_calories !== null ? (
+        <section className="rounded-2xl bg-white p-4 shadow-sm">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+            TDEE Balance
+          </h2>
+          <p className="mt-2 text-sm text-slate-700">
+            Avg TDEE: <span className="font-semibold text-slate-900">{summary.avg_tdee_calories} cal/day</span>
+          </p>
+          <p className="mt-1 text-sm text-slate-700">
+            Burn incl. TDEE:{" "}
+            <span className="font-semibold text-slate-900">
+              {summary.total_burn_with_tdee_calories ?? "-"}
+            </span>
+          </p>
+          <p className="mt-1 text-sm text-slate-700">
+            Deficit vs TDEE:{" "}
+            <span className="font-semibold text-slate-900">
+              {summary.daily_deficit_vs_tdee !== null ? `${summary.daily_deficit_vs_tdee} cal` : "-"}
+            </span>
+          </p>
+        </section>
+      ) : null}
+
       <section className="rounded-2xl bg-white p-5 shadow-sm">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Food By Meal</h2>
         <div className="mt-3 space-y-4">

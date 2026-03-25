@@ -97,6 +97,7 @@ model UserProfile {
   height_inches    Int?
   target_weight_lb Decimal? @db.Decimal(5, 2)
   target_calories  Int      @default(2000)
+  avg_tdee_calories Int?
   created_at       DateTime @default(now())
   updated_at       DateTime @updatedAt
   user             User     @relation(fields: [user_id], references: [id], onDelete: Cascade)

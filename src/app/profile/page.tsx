@@ -32,6 +32,7 @@ export default async function ProfilePage() {
       height_inches: true,
       target_weight_lb: true,
       target_calories: true,
+      avg_tdee_calories: true,
     },
   });
 
@@ -136,6 +137,24 @@ export default async function ProfilePage() {
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-base"
               />
             </div>
+          </div>
+
+          <div className="space-y-1">
+            <label htmlFor="avg_tdee_calories" className="text-sm font-medium text-slate-700">
+              Average TDEE (cal/day)
+            </label>
+            <input
+              id="avg_tdee_calories"
+              name="avg_tdee_calories"
+              type="number"
+              min={1000}
+              max={8000}
+              defaultValue={profile?.avg_tdee_calories ?? ""}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-base"
+            />
+            <p className="text-xs text-slate-500">
+              Optional. Used for deficit and weight-loss timeline estimates.
+            </p>
           </div>
 
           <button

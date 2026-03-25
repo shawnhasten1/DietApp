@@ -51,6 +51,17 @@ function get_last_n_day_keys(n: number, end_date = new Date()): string[] {
   return day_keys;
 }
 
+function get_previous_n_day_keys(n: number, end_date = new Date()): string[] {
+  const day_keys: string[] = [];
+  const end_day_key = day_bounds_for_date_in_app_time_zone(end_date).day_key;
+
+  for (let index = n; index >= 1; index -= 1) {
+    day_keys.push(add_days_to_day_key(end_day_key, -index));
+  }
+
+  return day_keys;
+}
+
 function format_date(date_iso: string): string {
   return format_date_in_app_time_zone(new Date(date_iso), {
     weekday: "short",
@@ -141,10 +152,15 @@ function round_to_tenth(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
+function round_to_hundredth(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
 export default async function DashboardPage() {
   const user = await require_authenticated_user();
   const trend_day_keys = get_last_n_day_keys(7);
-  const trend_start = day_bounds_for_key_in_app_time_zone(trend_day_keys[0])?.day_start ?? new Date(0);
+  const deficit_basis_day_keys = get_previous_n_day_keys(7);
+  const trend_start = day_bounds_for_key_in_app_time_zone(deficit_basis_day_keys[0])?.day_start ?? new Date(0);
   const today_bounds = day_bounds_for_date_in_app_time_zone(new Date());
 
   const [
@@ -165,6 +181,7 @@ export default async function DashboardPage() {
       select: {
         target_calories: true,
         target_weight_lb: true,
+        avg_tdee_calories: true,
       },
     }),
     prisma.weightEntry.findFirst({
@@ -254,6 +271,11 @@ export default async function DashboardPage() {
   ]);
 
   const calorie_trend = build_calorie_trend(trend_day_keys, trend_food_logs, trend_exercise_logs);
+  const deficit_basis_trend = build_calorie_trend(
+    deficit_basis_day_keys,
+    trend_food_logs,
+    trend_exercise_logs,
+  );
   const weight_trend = build_weight_trend(trend_day_keys, trend_weight_entries);
   const quick_pick_items = build_quick_pick_items(quick_pick_logs);
   const today_food_by_meal: Record<MealTypeValue, typeof today_food_logs> = {
@@ -273,6 +295,53 @@ export default async function DashboardPage() {
   const weight_trend_change =
     known_weights.length >= 2
       ? Number((known_weights[known_weights.length - 1].weight_lb! - known_weights[0].weight_lb!).toFixed(1))
+      : null;
+
+  const avg_tdee_calories = profile?.avg_tdee_calories ?? null;
+  const planned_daily_deficit =
+    avg_tdee_calories !== null ? avg_tdee_calories - (profile?.target_calories ?? 2000) : null;
+  const active_deficit_basis_days = deficit_basis_trend.filter(
+    (day) => day.consumed > 0 || day.burned > 0,
+  );
+  const latest_logged_deficit_day =
+    active_deficit_basis_days.length > 0
+      ? active_deficit_basis_days[active_deficit_basis_days.length - 1]
+      : null;
+  const latest_logged_daily_deficit =
+    avg_tdee_calories !== null && latest_logged_deficit_day
+      ? avg_tdee_calories + latest_logged_deficit_day.burned - latest_logged_deficit_day.consumed
+      : null;
+  const seven_day_avg_daily_deficit =
+    avg_tdee_calories !== null && active_deficit_basis_days.length > 0
+      ? active_deficit_basis_days.reduce(
+          (sum, day) => sum + (avg_tdee_calories + day.burned - day.consumed),
+          0,
+        ) / active_deficit_basis_days.length
+      : null;
+  const estimated_weekly_weight_change_lb =
+    seven_day_avg_daily_deficit !== null
+      ? round_to_hundredth((seven_day_avg_daily_deficit * 7) / 3500)
+      : null;
+
+  const latest_weight_lb = latest_weight ? Number(latest_weight.weight_lb) : null;
+  const target_weight_lb = profile?.target_weight_lb ? Number(profile.target_weight_lb) : null;
+  const pounds_to_lose =
+    latest_weight_lb !== null &&
+    target_weight_lb !== null &&
+    target_weight_lb < latest_weight_lb
+      ? latest_weight_lb - target_weight_lb
+      : null;
+  const estimated_days_to_goal =
+    pounds_to_lose !== null &&
+    seven_day_avg_daily_deficit !== null &&
+    seven_day_avg_daily_deficit > 0
+      ? Math.ceil((pounds_to_lose * 3500) / seven_day_avg_daily_deficit)
+      : null;
+  const estimated_weeks_to_goal =
+    estimated_days_to_goal !== null ? round_to_hundredth(estimated_days_to_goal / 7) : null;
+  const estimated_goal_date =
+    estimated_days_to_goal !== null
+      ? add_days_to_day_key(today_bounds.day_key, estimated_days_to_goal)
       : null;
 
   return (
@@ -336,6 +405,114 @@ export default async function DashboardPage() {
           Target:{" "}
           {profile?.target_weight_lb ? `${Number(profile.target_weight_lb).toFixed(1)} lb` : "Not set"}
         </p>
+      </section>
+
+      <section className="rounded-2xl bg-white p-5 shadow-sm">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Energy Plan</h2>
+        {avg_tdee_calories === null ? (
+          <p className="mt-2 text-sm text-slate-600">
+            Add your average TDEE in Profile to unlock deficit and timeline estimates.
+          </p>
+        ) : (
+          <div className="mt-3 space-y-3">
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="text-[11px] uppercase tracking-wide text-slate-500">Avg TDEE</p>
+                <p className="mt-1 font-semibold text-slate-900">{avg_tdee_calories} cal</p>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="text-[11px] uppercase tracking-wide text-slate-500">
+                  Latest Deficit
+                </p>
+                <p
+                  className={`mt-1 font-semibold ${
+                    (latest_logged_daily_deficit ?? 0) >= 0 ? "text-emerald-700" : "text-rose-700"
+                  }`}
+                >
+                  {latest_logged_daily_deficit !== null
+                    ? `${format_signed_number(Math.round(latest_logged_daily_deficit))} cal`
+                    : "-"}
+                </p>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="text-[11px] uppercase tracking-wide text-slate-500">7-Day Avg Deficit</p>
+                <p
+                  className={`mt-1 font-semibold ${
+                    (seven_day_avg_daily_deficit ?? 0) >= 0 ? "text-emerald-700" : "text-rose-700"
+                  }`}
+                >
+                  {seven_day_avg_daily_deficit !== null
+                    ? `${format_signed_number(Math.round(seven_day_avg_daily_deficit))} cal`
+                    : "-"}
+                </p>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="text-[11px] uppercase tracking-wide text-slate-500">Weekly Pace</p>
+                <p className="mt-1 font-semibold text-slate-900">
+                  {estimated_weekly_weight_change_lb !== null
+                    ? `${format_signed_number(estimated_weekly_weight_change_lb)} lb`
+                    : "-"}
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                Goal Timeline
+              </p>
+              {latest_weight_lb === null ? (
+                <p className="mt-2 text-slate-600">Log your current weight to estimate timeline.</p>
+              ) : target_weight_lb === null ? (
+                <p className="mt-2 text-slate-600">Set a target weight in Profile.</p>
+              ) : target_weight_lb >= latest_weight_lb ? (
+                <p className="mt-2 text-slate-600">
+                  Timeline shows when target weight is below current weight.
+                </p>
+              ) : active_deficit_basis_days.length === 0 ? (
+                <p className="mt-2 text-slate-600">
+                  No entries in the last 7 days (excluding today) to estimate from yet.
+                </p>
+              ) : seven_day_avg_daily_deficit === null || seven_day_avg_daily_deficit <= 0 ? (
+                <p className="mt-2 text-slate-600">
+                  Recent average deficit is not positive yet.
+                </p>
+              ) : (
+                <div className="mt-2 grid grid-cols-1 gap-1 text-slate-700">
+                  <p>
+                    To lose: <span className="font-semibold text-slate-900">{pounds_to_lose?.toFixed(1)} lb</span>
+                  </p>
+                  <p>
+                    Estimated pace:{" "}
+                    <span className="font-semibold text-slate-900">
+                      {estimated_weeks_to_goal !== null ? `${estimated_weeks_to_goal} weeks` : "-"}
+                    </span>
+                  </p>
+                  <p>
+                    Goal date:{" "}
+                    <span className="font-semibold text-slate-900">
+                      {estimated_goal_date
+                        ? format_day_key_in_app_time_zone(estimated_goal_date, {
+                            weekday: "short",
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          })
+                        : "-"}
+                    </span>
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <p className="text-xs text-slate-500">
+              Based on {active_deficit_basis_days.length} of last 7 days (excluding today).
+            </p>
+            <p className="text-xs text-slate-500">
+              Planned deficit vs goal:{" "}
+              {planned_daily_deficit !== null ? `${format_signed_number(planned_daily_deficit)} cal/day` : "-"}
+            </p>
+          </div>
+        )}
       </section>
 
       <section className="rounded-2xl bg-white p-5 shadow-sm">
