@@ -364,7 +364,7 @@ export function FoodLogForm({
           <div className="max-h-56 space-y-2 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2">
             {quick_pick_items.map((item) => (
               <button
-                key={`quick-${item.name}-${item.source_ref ?? item.upc ?? item.last_logged_at}`}
+                key={`quick-${item.quick_pick_id}`}
                 type="button"
                 onClick={() => choose_quick_pick_item(item)}
                 className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left"

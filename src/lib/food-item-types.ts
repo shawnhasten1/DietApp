@@ -20,6 +20,7 @@ export type ProviderFoodItem = {
 };
 
 export type QuickPickFoodItem = ProviderFoodItem & {
+  quick_pick_id: string;
   times_logged: number;
   last_logged_at: string;
   suggested_meal_type: MealTypeValue;

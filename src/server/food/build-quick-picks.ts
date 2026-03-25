@@ -45,6 +45,7 @@ export function build_quick_pick_items(
   const by_food_item_id = new Map<
     string,
     {
+      food_item_id: string;
       log_count: number;
       latest_consumed_at: Date;
       suggested_meal_type: MealTypeValue;
@@ -58,6 +59,7 @@ export function build_quick_pick_items(
 
     if (!existing) {
       by_food_item_id.set(log.food_item_id, {
+        food_item_id: log.food_item_id,
         log_count: 1,
         latest_consumed_at: log.consumed_at,
         suggested_meal_type: normalized_meal_type,
@@ -84,6 +86,7 @@ export function build_quick_pick_items(
     })
     .slice(0, limit)
     .map((entry) => ({
+      quick_pick_id: entry.food_item_id,
       name: entry.item.name,
       brand: entry.item.brand,
       upc: entry.item.upc,

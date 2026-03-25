@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { MobileBottomNav } from "@/components/mobile-bottom-nav";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -13,7 +14,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="h-full">
-      <body className="min-h-full bg-slate-100 text-slate-900 antialiased">{children}</body>
+      <body className="min-h-full bg-slate-100 text-slate-900 antialiased">
+        {children}
+        <MobileBottomNav />
+      </body>
     </html>
   );
 }

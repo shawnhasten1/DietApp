@@ -54,15 +54,15 @@ export default async function FoodPage() {
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-md flex-col gap-4 px-4 py-6">
       <AppShellHeader
-        title="Food Logs"
-        subtitle="Search by food or UPC, then review and save."
+        title="Food Tools"
+        subtitle="Advanced search, UPC fallback, and manual logging."
         menu_email={user.email}
         menu_date={menu_date_label()}
       />
 
       <section className="rounded-2xl bg-white p-5 shadow-sm">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-          Add Food Entry
+          Advanced Food Entry
         </h2>
         <div className="mt-4">
           <FoodLogForm action={create_food_log_action} quick_pick_items={quick_pick_items} />
@@ -71,7 +71,7 @@ export default async function FoodPage() {
 
       <section className="rounded-2xl bg-white p-5 shadow-sm">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-          Recent Food Entries
+          Recent Food Tool Entries
         </h2>
 
         {food_logs.length === 0 ? (
