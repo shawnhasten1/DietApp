@@ -59,3 +59,32 @@ button:disabled,
     transition: none;
   }
 }
+
+@keyframes route-progress-slide {
+  0% {
+    transform: translateX(-100%);
+    width: 28%;
+  }
+
+  50% {
+    width: 52%;
+  }
+
+  100% {
+    transform: translateX(210%);
+    width: 28%;
+  }
+}
+
+.route-progress-bar {
+  animation: route-progress-slide 1.1s ease-in-out infinite;
+}
+
+/* Prevent iOS Safari focus zoom on smaller form-control font sizes. */
+@media (max-width: 768px) and (pointer: coarse) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
