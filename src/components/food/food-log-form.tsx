@@ -355,13 +355,13 @@ export function FoodLogForm({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 overflow-x-hidden">
       {quick_pick_items.length > 0 ? (
         <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
             Common And Recent Foods
           </p>
-          <div className="max-h-56 space-y-2 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2">
+          <div className="max-h-56 space-y-2 overflow-x-hidden overflow-y-auto rounded-xl border border-slate-200 bg-white p-2">
             {quick_pick_items.map((item) => (
               <button
                 key={`quick-${item.quick_pick_id}`}
@@ -389,7 +389,7 @@ export function FoodLogForm({
         </div>
       ) : null}
 
-      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+      <div className="overflow-x-hidden rounded-xl border border-slate-200 bg-slate-50 p-3">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
           Food Lookup
         </p>
@@ -463,7 +463,7 @@ export function FoodLogForm({
       {has_results ? (
         <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Results</p>
-          <div className="max-h-56 space-y-2 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2">
+          <div className="max-h-56 space-y-2 overflow-x-hidden overflow-y-auto rounded-xl border border-slate-200 bg-white p-2">
             {search_results.map((item, index) => (
               <button
                 key={`${item.source_ref ?? item.name}-${index}`}
