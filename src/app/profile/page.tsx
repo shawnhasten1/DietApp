@@ -32,6 +32,14 @@ export default async function ProfilePage() {
       height_inches: true,
       target_weight_lb: true,
       target_calories: true,
+      target_calories_sun: true,
+      target_calories_mon: true,
+      target_calories_tue: true,
+      target_calories_wed: true,
+      target_calories_thu: true,
+      target_calories_fri: true,
+      target_calories_sat: true,
+      water_goal_oz: true,
       avg_tdee_calories: true,
     },
   });
@@ -125,7 +133,7 @@ export default async function ProfilePage() {
             </div>
             <div className="space-y-1">
               <label htmlFor="target_calories" className="text-sm font-medium text-slate-700">
-                Calorie Goal
+                Base Calorie Goal
               </label>
               <input
                 id="target_calories"
@@ -137,6 +145,128 @@ export default async function ProfilePage() {
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-base"
               />
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <h3 className="text-sm font-medium text-slate-700">Calorie Schedule By Weekday</h3>
+            <p className="text-xs text-slate-500">
+              Optional overrides. Leave blank to use your base calorie goal.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label htmlFor="target_calories_sun" className="text-xs font-medium text-slate-700">
+                  Sunday
+                </label>
+                <input
+                  id="target_calories_sun"
+                  name="target_calories_sun"
+                  type="number"
+                  min={800}
+                  max={12000}
+                  defaultValue={profile?.target_calories_sun ?? ""}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-base"
+                />
+              </div>
+              <div className="space-y-1">
+                <label htmlFor="target_calories_mon" className="text-xs font-medium text-slate-700">
+                  Monday
+                </label>
+                <input
+                  id="target_calories_mon"
+                  name="target_calories_mon"
+                  type="number"
+                  min={800}
+                  max={12000}
+                  defaultValue={profile?.target_calories_mon ?? ""}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-base"
+                />
+              </div>
+              <div className="space-y-1">
+                <label htmlFor="target_calories_tue" className="text-xs font-medium text-slate-700">
+                  Tuesday
+                </label>
+                <input
+                  id="target_calories_tue"
+                  name="target_calories_tue"
+                  type="number"
+                  min={800}
+                  max={12000}
+                  defaultValue={profile?.target_calories_tue ?? ""}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-base"
+                />
+              </div>
+              <div className="space-y-1">
+                <label htmlFor="target_calories_wed" className="text-xs font-medium text-slate-700">
+                  Wednesday
+                </label>
+                <input
+                  id="target_calories_wed"
+                  name="target_calories_wed"
+                  type="number"
+                  min={800}
+                  max={12000}
+                  defaultValue={profile?.target_calories_wed ?? ""}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-base"
+                />
+              </div>
+              <div className="space-y-1">
+                <label htmlFor="target_calories_thu" className="text-xs font-medium text-slate-700">
+                  Thursday
+                </label>
+                <input
+                  id="target_calories_thu"
+                  name="target_calories_thu"
+                  type="number"
+                  min={800}
+                  max={12000}
+                  defaultValue={profile?.target_calories_thu ?? ""}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-base"
+                />
+              </div>
+              <div className="space-y-1">
+                <label htmlFor="target_calories_fri" className="text-xs font-medium text-slate-700">
+                  Friday
+                </label>
+                <input
+                  id="target_calories_fri"
+                  name="target_calories_fri"
+                  type="number"
+                  min={800}
+                  max={12000}
+                  defaultValue={profile?.target_calories_fri ?? ""}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-base"
+                />
+              </div>
+              <div className="space-y-1">
+                <label htmlFor="target_calories_sat" className="text-xs font-medium text-slate-700">
+                  Saturday
+                </label>
+                <input
+                  id="target_calories_sat"
+                  name="target_calories_sat"
+                  type="number"
+                  min={800}
+                  max={12000}
+                  defaultValue={profile?.target_calories_sat ?? ""}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-base"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label htmlFor="water_goal_oz" className="text-sm font-medium text-slate-700">
+              Daily Water Goal (oz)
+            </label>
+            <input
+              id="water_goal_oz"
+              name="water_goal_oz"
+              type="number"
+              min={8}
+              max={1000}
+              defaultValue={profile?.water_goal_oz ?? 64}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-base"
+            />
           </div>
 
           <div className="space-y-1">

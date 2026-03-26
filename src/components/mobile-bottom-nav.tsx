@@ -19,6 +19,7 @@ const app_route_prefixes = [
   "/profile",
   "/weight",
   "/recipes",
+  "/check-in",
 ];
 
 const tab_links: TabLink[] = [

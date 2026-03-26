@@ -16,11 +16,13 @@ import { require_authenticated_user } from "@/lib/authz";
 import {
   create_food_log_action,
   delete_food_log_action,
+  relog_recent_meal_action,
   update_food_log_action,
 } from "@/app/food/actions";
 import { meal_type_labels, meal_type_values, normalize_meal_type, type MealTypeValue } from "@/lib/meal-types";
 import { build_quick_pick_items } from "@/server/food/build-quick-picks";
 import { get_daily_summary } from "@/server/summary/get-daily-summary";
+import { create_water_log_action, delete_water_log_action } from "@/app/water/actions";
 
 type CalorieTrendDay = {
   date_key: string;
@@ -34,6 +36,14 @@ type WeightTrendDay = {
   date_key: string;
   label: string;
   weight_lb: number | null;
+};
+
+type RecentMealTemplate = {
+  date_key: string;
+  meal_type: MealTypeValue;
+  calories: number;
+  item_count: number;
+  food_names: string[];
 };
 
 function day_label_from_key(day_key: string): string {
@@ -156,12 +166,50 @@ function round_to_hundredth(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
+function compute_streak_days(day_keys_with_entries: Set<string>, end_day_key: string): number {
+  let streak = 0;
+  let cursor = end_day_key;
+
+  while (day_keys_with_entries.has(cursor)) {
+    streak += 1;
+    cursor = add_days_to_day_key(cursor, -1);
+  }
+
+  return streak;
+}
+
+function streak_badge(streak: number, metric: "food" | "weight"): string {
+  if (streak >= 30) {
+    return metric === "food" ? "Food Streak Legend" : "Weight Streak Legend";
+  }
+
+  if (streak >= 14) {
+    return metric === "food" ? "Food Streak On Fire" : "Weight Streak On Fire";
+  }
+
+  if (streak >= 7) {
+    return metric === "food" ? "Food Streak Builder" : "Weight Streak Builder";
+  }
+
+  if (streak >= 3) {
+    return metric === "food" ? "Food Momentum" : "Weight Momentum";
+  }
+
+  return metric === "food" ? "Start Food Streak" : "Start Weight Streak";
+}
+
 export default async function DashboardPage() {
   const user = await require_authenticated_user();
   const trend_day_keys = get_last_n_day_keys(7);
   const deficit_basis_day_keys = get_previous_n_day_keys(7);
   const trend_start = day_bounds_for_key_in_app_time_zone(deficit_basis_day_keys[0])?.day_start ?? new Date(0);
   const today_bounds = day_bounds_for_date_in_app_time_zone(new Date());
+  const streak_start =
+    day_bounds_for_key_in_app_time_zone(add_days_to_day_key(today_bounds.day_key, -120))?.day_start ??
+    new Date(0);
+  const recent_meal_start =
+    day_bounds_for_key_in_app_time_zone(add_days_to_day_key(today_bounds.day_key, -21))?.day_start ??
+    new Date(0);
 
   const [
     summary,
@@ -170,10 +218,14 @@ export default async function DashboardPage() {
     recent_food_logs,
     recent_exercise_logs,
     today_food_logs,
+    today_water_logs,
     quick_pick_logs,
+    recent_meal_logs,
     trend_food_logs,
     trend_exercise_logs,
     trend_weight_entries,
+    streak_food_logs,
+    streak_weight_entries,
   ] = await Promise.all([
     get_daily_summary(user.id),
     prisma.userProfile.findUnique({
@@ -182,6 +234,7 @@ export default async function DashboardPage() {
         target_calories: true,
         target_weight_lb: true,
         avg_tdee_calories: true,
+        water_goal_oz: true,
       },
     }),
     prisma.weightEntry.findFirst({
@@ -218,6 +271,19 @@ export default async function DashboardPage() {
         consumed_at: "asc",
       },
     }),
+    prisma.waterLog.findMany({
+      where: {
+        user_id: user.id,
+        consumed_at: {
+          gte: today_bounds.day_start,
+          lt: today_bounds.day_end,
+        },
+      },
+      orderBy: {
+        consumed_at: "desc",
+      },
+      take: 20,
+    }),
     prisma.foodLog.findMany({
       where: {
         user_id: user.id,
@@ -229,6 +295,27 @@ export default async function DashboardPage() {
         consumed_at: "desc",
       },
       take: 120,
+    }),
+    prisma.foodLog.findMany({
+      where: {
+        user_id: user.id,
+        consumed_at: {
+          gte: recent_meal_start,
+          lt: today_bounds.day_start,
+        },
+      },
+      include: {
+        food_item: {
+          select: {
+            name: true,
+            calories: true,
+          },
+        },
+      },
+      orderBy: {
+        consumed_at: "desc",
+      },
+      take: 300,
     }),
     prisma.foodLog.findMany({
       where: {
@@ -268,6 +355,30 @@ export default async function DashboardPage() {
       },
       orderBy: { recorded_at: "asc" },
     }),
+    prisma.foodLog.findMany({
+      where: {
+        user_id: user.id,
+        consumed_at: { gte: streak_start },
+      },
+      select: {
+        consumed_at: true,
+      },
+      orderBy: {
+        consumed_at: "asc",
+      },
+    }),
+    prisma.weightEntry.findMany({
+      where: {
+        user_id: user.id,
+        recorded_at: { gte: streak_start },
+      },
+      select: {
+        recorded_at: true,
+      },
+      orderBy: {
+        recorded_at: "asc",
+      },
+    }),
   ]);
 
   const calorie_trend = build_calorie_trend(trend_day_keys, trend_food_logs, trend_exercise_logs);
@@ -290,6 +401,60 @@ export default async function DashboardPage() {
     today_food_by_meal[meal_type].push(log);
   }
 
+  const total_water_oz = today_water_logs.reduce((sum, log) => sum + log.amount_oz, 0);
+  const water_goal_oz = profile?.water_goal_oz ?? 64;
+  const water_remaining_oz = Math.max(water_goal_oz - total_water_oz, 0);
+  const water_progress_pct = Math.min(Math.round((total_water_oz / Math.max(water_goal_oz, 1)) * 100), 100);
+
+  const food_day_keys = new Set(streak_food_logs.map((log) => day_key_in_app_time_zone(log.consumed_at)));
+  const weight_day_keys = new Set(streak_weight_entries.map((entry) => day_key_in_app_time_zone(entry.recorded_at)));
+  const food_streak_days = compute_streak_days(food_day_keys, today_bounds.day_key);
+  const weight_streak_days = compute_streak_days(weight_day_keys, today_bounds.day_key);
+
+  const recent_template_map = new Map<string, RecentMealTemplate>();
+
+  for (const log of recent_meal_logs) {
+    const meal_type = normalize_meal_type(log.meal_type) ?? "snack";
+    const day_key = day_key_in_app_time_zone(log.consumed_at);
+    const map_key = `${day_key}:${meal_type}`;
+    const existing = recent_template_map.get(map_key);
+    const calories = Math.round(Number(log.servings) * log.food_item.calories);
+
+    if (!existing) {
+      recent_template_map.set(map_key, {
+        date_key: day_key,
+        meal_type,
+        calories,
+        item_count: 1,
+        food_names: [log.food_item.name],
+      });
+      continue;
+    }
+
+    existing.calories += calories;
+    existing.item_count += 1;
+    if (existing.food_names.length < 3 && !existing.food_names.includes(log.food_item.name)) {
+      existing.food_names.push(log.food_item.name);
+    }
+  }
+
+  const recent_meal_templates_by_type: Record<MealTypeValue, RecentMealTemplate[]> = {
+    breakfast: [],
+    lunch: [],
+    dinner: [],
+    snack: [],
+  };
+
+  for (const template of recent_template_map.values()) {
+    recent_meal_templates_by_type[template.meal_type].push(template);
+  }
+
+  for (const meal_type of meal_type_values) {
+    recent_meal_templates_by_type[meal_type] = recent_meal_templates_by_type[meal_type]
+      .sort((a, b) => b.date_key.localeCompare(a.date_key))
+      .slice(0, 3);
+  }
+
   const calorie_trend_change = calorie_trend[calorie_trend.length - 1].net - calorie_trend[0].net;
   const known_weights = weight_trend.filter((day) => day.weight_lb !== null);
   const weight_trend_change =
@@ -299,7 +464,7 @@ export default async function DashboardPage() {
 
   const avg_tdee_calories = profile?.avg_tdee_calories ?? null;
   const planned_daily_deficit =
-    avg_tdee_calories !== null ? avg_tdee_calories - (profile?.target_calories ?? 2000) : null;
+    avg_tdee_calories !== null ? avg_tdee_calories - summary.target_calories_for_day : null;
   const active_deficit_basis_days = deficit_basis_trend.filter(
     (day) => day.consumed > 0 || day.burned > 0,
   );
@@ -373,7 +538,10 @@ export default async function DashboardPage() {
         <div className="rounded-xl bg-white p-4 shadow-sm">
           <p className="text-xs uppercase text-slate-500">Target</p>
           <p className="mt-1 text-2xl font-semibold text-slate-900">
-            {profile?.target_calories ?? 2000}
+            {summary.target_calories_for_day}
+          </p>
+          <p className="mt-1 text-[11px] text-slate-500">
+            {summary.target_calories_uses_schedule_override ? "Scheduled day target" : "Base day target"}
           </p>
         </div>
       </section>
@@ -394,6 +562,91 @@ export default async function DashboardPage() {
             <p className="mt-1 font-semibold text-slate-900">{summary.fat_g} g</p>
           </div>
         </div>
+      </section>
+
+      <section className="rounded-2xl bg-white p-5 shadow-sm">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Consistency</h2>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p className="text-[11px] uppercase tracking-wide text-slate-500">🍽 Food Logging</p>
+            <p className="mt-1 text-lg font-semibold text-slate-900">{food_streak_days} day streak</p>
+            <p className="text-xs text-slate-600">{streak_badge(food_streak_days, "food")}</p>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p className="text-[11px] uppercase tracking-wide text-slate-500">⚖ Weight Logging</p>
+            <p className="mt-1 text-lg font-semibold text-slate-900">{weight_streak_days} day streak</p>
+            <p className="text-xs text-slate-600">{streak_badge(weight_streak_days, "weight")}</p>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-2xl bg-white p-5 shadow-sm">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Water</h2>
+        <p className="mt-2 text-sm text-slate-700">
+          {total_water_oz} oz / {water_goal_oz} oz goal
+        </p>
+        <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200">
+          <div
+            className="h-full rounded-full bg-cyan-500 transition-all"
+            style={{ width: `${water_progress_pct}%` }}
+          />
+        </div>
+        <p className="mt-1 text-xs text-slate-600">
+          {water_remaining_oz > 0 ? `${water_remaining_oz} oz remaining` : "Goal reached"}
+        </p>
+
+        <div className="mt-3 grid grid-cols-4 gap-2">
+          {[8, 12, 16, 24].map((amount) => (
+            <form key={amount} action={create_water_log_action}>
+              <input type="hidden" name="amount_oz" value={amount} />
+              <button
+                type="submit"
+                className="w-full rounded-lg border border-cyan-200 bg-cyan-50 px-2 py-2 text-xs font-semibold text-cyan-700"
+              >
+                💧 +{amount}
+              </button>
+            </form>
+          ))}
+        </div>
+
+        <form action={create_water_log_action} className="mt-3 flex gap-2">
+          <input
+            name="amount_oz"
+            type="number"
+            min={1}
+            max={2000}
+            placeholder="Custom oz"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          />
+          <button
+            type="submit"
+            className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white"
+          >
+            Add
+          </button>
+        </form>
+
+        {today_water_logs.length > 0 ? (
+          <div className="mt-3 space-y-2">
+            {today_water_logs.slice(0, 5).map((log) => (
+              <div key={log.id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
+                <p className="text-xs font-semibold text-slate-700">
+                  💧 {log.amount_oz} oz
+                </p>
+                <form action={delete_water_log_action}>
+                  <input type="hidden" name="log_id" value={log.id} />
+                  <button
+                    type="submit"
+                    className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700"
+                    aria-label="Delete water entry"
+                  >
+                    🗑
+                  </button>
+                </form>
+              </div>
+            ))}
+          </div>
+        ) : null}
       </section>
 
       <section className="rounded-2xl bg-white p-5 shadow-sm">
@@ -614,6 +867,52 @@ export default async function DashboardPage() {
       </section>
 
       <section className="rounded-2xl bg-white p-5 shadow-sm">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Quick Re-Log Meals</h2>
+        <p className="mt-1 text-xs text-slate-600">
+          One tap to copy a recent meal into today.
+        </p>
+        <div className="mt-3 space-y-4">
+          {meal_type_values.map((meal_type) => {
+            const templates = recent_meal_templates_by_type[meal_type];
+
+            return (
+              <div key={meal_type}>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  {meal_type_labels[meal_type]}
+                </p>
+                {templates.length === 0 ? (
+                  <p className="mt-1 text-xs text-slate-500">No recent {meal_type_labels[meal_type].toLowerCase()} templates.</p>
+                ) : (
+                  <div className="mt-2 space-y-2">
+                    {templates.map((template) => (
+                      <form key={`${template.date_key}-${template.meal_type}`} action={relog_recent_meal_action}>
+                        <input type="hidden" name="source_day_key" value={template.date_key} />
+                        <input type="hidden" name="meal_type" value={template.meal_type} />
+                        <button
+                          type="submit"
+                          className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left"
+                        >
+                          <p className="text-xs font-semibold text-slate-800">
+                            🔁 {format_day_key_in_app_time_zone(template.date_key, { weekday: "short", month: "short", day: "numeric" })}
+                          </p>
+                          <p className="mt-0.5 text-[11px] text-slate-600">
+                            {template.item_count} items | {template.calories} cal
+                          </p>
+                          <p className="mt-0.5 truncate text-[11px] text-slate-500">
+                            {template.food_names.join(" · ")}
+                          </p>
+                        </button>
+                      </form>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="rounded-2xl bg-white p-5 shadow-sm">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Today Actions</h2>
         <div className="mt-3 grid grid-cols-2 gap-2 text-sm font-semibold">
           <Link href="/food" className="rounded-lg bg-slate-50 px-3 py-2 text-center">
@@ -633,6 +932,9 @@ export default async function DashboardPage() {
           </Link>
           <Link href="/profile" className="rounded-lg bg-slate-50 px-3 py-2 text-center">
             Edit Goals
+          </Link>
+          <Link href="/check-in" className="rounded-lg bg-slate-50 px-3 py-2 text-center">
+            📊 Weekly Check-In
           </Link>
         </div>
       </section>

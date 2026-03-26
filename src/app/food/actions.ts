@@ -4,7 +4,10 @@ import { revalidatePath } from "next/cache";
 import { FoodSource } from "@prisma/client";
 import { z } from "zod";
 import { require_authenticated_user } from "@/lib/authz";
-import { parse_datetime_local_in_app_time_zone } from "@/lib/app-time";
+import {
+  day_bounds_for_key_in_app_time_zone,
+  parse_datetime_local_in_app_time_zone,
+} from "@/lib/app-time";
 import { normalize_meal_type } from "@/lib/meal-types";
 import { prisma } from "@/lib/prisma";
 
@@ -68,6 +71,11 @@ const update_food_log_schema = z.object({
   meal_type: z.string().max(32).nullable(),
   consumed_at: z.date(),
   notes: z.string().max(1000).nullable(),
+});
+
+const quick_relog_schema = z.object({
+  source_day_key: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  meal_type: z.string().max(32),
 });
 
 function parse_meal_type(value: FormDataEntryValue | null): "breakfast" | "lunch" | "dinner" | "snack" {
@@ -241,6 +249,69 @@ export async function delete_food_log_action(form_data: FormData) {
       id: log_id,
       user_id: user.id,
     },
+  });
+
+  revalidatePath("/food");
+  revalidatePath("/daily");
+  revalidatePath("/dashboard");
+}
+
+export async function relog_recent_meal_action(form_data: FormData) {
+  const user = await require_authenticated_user();
+
+  const parsed = quick_relog_schema.safeParse({
+    source_day_key: required_string(form_data.get("source_day_key")),
+    meal_type: required_string(form_data.get("meal_type")),
+  });
+
+  if (!parsed.success) {
+    throw new Error("Invalid quick re-log input.");
+  }
+
+  const source_meal_type = normalize_meal_type(parsed.data.meal_type);
+  if (!source_meal_type) {
+    throw new Error("Invalid meal type for quick re-log.");
+  }
+
+  const source_bounds = day_bounds_for_key_in_app_time_zone(parsed.data.source_day_key);
+  if (!source_bounds) {
+    throw new Error("Invalid source day.");
+  }
+
+  const source_logs = await prisma.foodLog.findMany({
+    where: {
+      user_id: user.id,
+      meal_type: source_meal_type,
+      consumed_at: {
+        gte: source_bounds.day_start,
+        lt: source_bounds.day_end,
+      },
+    },
+    select: {
+      food_item_id: true,
+      servings: true,
+      notes: true,
+    },
+    orderBy: {
+      consumed_at: "asc",
+    },
+  });
+
+  if (source_logs.length === 0) {
+    throw new Error("No matching meal entries found to re-log.");
+  }
+
+  const now = new Date();
+
+  await prisma.foodLog.createMany({
+    data: source_logs.map((log, index) => ({
+      user_id: user.id,
+      food_item_id: log.food_item_id,
+      servings: log.servings,
+      meal_type: source_meal_type,
+      notes: log.notes,
+      consumed_at: new Date(now.getTime() + 1000 * 60 * index),
+    })),
   });
 
   revalidatePath("/food");

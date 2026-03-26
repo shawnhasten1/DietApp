@@ -29,6 +29,7 @@ model User {
   weight_entries WeightEntry[]
   food_logs      FoodLog[]
   exercise_logs  ExerciseLog[]
+  water_logs     WaterLog[]
   recipes        Recipe[]
 
   @@map("users")
@@ -97,6 +98,14 @@ model UserProfile {
   height_inches    Int?
   target_weight_lb Decimal? @db.Decimal(5, 2)
   target_calories  Int      @default(2000)
+  target_calories_sun Int?
+  target_calories_mon Int?
+  target_calories_tue Int?
+  target_calories_wed Int?
+  target_calories_thu Int?
+  target_calories_fri Int?
+  target_calories_sat Int?
+  water_goal_oz     Int      @default(64)
   avg_tdee_calories Int?
   created_at       DateTime @default(now())
   updated_at       DateTime @updatedAt
@@ -173,6 +182,19 @@ model ExerciseLog {
 
   @@index([user_id, performed_at])
   @@map("exercise_logs")
+}
+
+model WaterLog {
+  id          String   @id @default(cuid())
+  user_id     String
+  amount_oz   Int
+  consumed_at DateTime @default(now())
+  notes       String?  @db.Text
+  created_at  DateTime @default(now())
+  user        User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id, consumed_at])
+  @@map("water_logs")
 }
 
 model Recipe {

@@ -53,7 +53,7 @@ export default async function DailyPage({
   const { day_start, day_end } = bounds;
   const selected_day = day_start;
 
-  const [summary, food_logs, recent_food_logs, exercise_logs, weight_entries] = await Promise.all([
+  const [summary, food_logs, recent_food_logs, exercise_logs, weight_entries, water_logs] = await Promise.all([
     get_daily_summary(user.id, selected_day),
     prisma.foodLog.findMany({
       where: {
@@ -104,6 +104,18 @@ export default async function DailyPage({
       },
       orderBy: {
         recorded_at: "asc",
+      },
+    }),
+    prisma.waterLog.findMany({
+      where: {
+        user_id: user.id,
+        consumed_at: {
+          gte: day_start,
+          lt: day_end,
+        },
+      },
+      orderBy: {
+        consumed_at: "asc",
       },
     }),
   ]);
@@ -186,6 +198,13 @@ export default async function DailyPage({
           <p className="text-xs uppercase text-slate-500">Macros</p>
           <p className="mt-1 text-sm font-semibold text-slate-900">
             P {summary.protein_g} C {summary.carbs_g} F {summary.fat_g}
+          </p>
+        </div>
+        <div className="rounded-xl bg-white p-4 shadow-sm">
+          <p className="text-xs uppercase text-slate-500">Target</p>
+          <p className="mt-1 text-2xl font-semibold text-slate-900">{summary.target_calories_for_day}</p>
+          <p className="mt-1 text-[11px] text-slate-500">
+            {summary.target_calories_uses_schedule_override ? "Scheduled day target" : "Base day target"}
           </p>
         </div>
       </section>
@@ -300,6 +319,25 @@ export default async function DailyPage({
                   {Number(entry.weight_lb).toFixed(1)} lb
                 </p>
                 <p className="text-xs text-slate-600">{format_time(entry.recorded_at)}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="rounded-2xl bg-white p-5 shadow-sm">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Water</h2>
+        {water_logs.length === 0 ? (
+          <p className="mt-2 text-sm text-slate-600">No water entries.</p>
+        ) : (
+          <div className="mt-3 space-y-2">
+            <p className="text-xs text-slate-600">
+              Total: {water_logs.reduce((sum, entry) => sum + entry.amount_oz, 0)} oz
+            </p>
+            {water_logs.map((entry) => (
+              <div key={entry.id} className="rounded-lg bg-slate-50 px-3 py-2">
+                <p className="text-sm font-semibold text-slate-900">{entry.amount_oz} oz</p>
+                <p className="text-xs text-slate-600">{format_time(entry.consumed_at)}</p>
               </div>
             ))}
           </div>

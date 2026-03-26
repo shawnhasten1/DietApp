@@ -20,6 +20,7 @@ const nav_links = [
 ];
 
 const secondary_nav_links = [
+  { href: "/check-in", label: "Weekly Check-In" },
   { href: "/food", label: "Food Tools" },
   { href: "/recipes", label: "Recipes" },
   { href: "/weight", label: "Weight" },
